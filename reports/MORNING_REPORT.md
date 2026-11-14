@@ -178,7 +178,7 @@ d9c586f samples: FOVs at samples/ top level so 'run.py --input samples/' works; 
 
 - tags on origin: v0.1, v0.1-models, v0.2
 - release with YOLO26l: https://github.com/AnupamMI/cervical-cell-pipeline/releases/tag/v0.1-models
-- v0.2 release (V0–V3 weights, if pushed): https://github.com/AnupamMI/cervical-cell-pipeline/releases/tag/v0.2-models
+- V0–V3 weights (~0.5 MB each) are committed in git under `models/seg/tinyseg_v3/` (plus the installed winner in `models/seg/V1_v3/`); no separate v0.2 release was needed
 - working tree: clean
 
 ## Run it on Colab (T4) tomorrow
@@ -196,4 +196,14 @@ d9c586f samples: FOVs at samples/ top level so 'run.py --input samples/' works; 
 2. T2's vertex analysis says most outlines sit exactly on NCNet's boundary; read T2 results as agreement with those outlines.
 3. Macenko is a two-stain (H&E) model applied to Pap stain; 2 % of crops fall back to unchanged.
 4. Anything flagged as failed above.
+5. **Important: the old v2_1 scores higher than the shipped V1 on every metric.** Primary (nucleus Dice, YOLO26s boxes):
+   v2_1 0.932 [0.921, 0.941] vs V1 0.910 [0.895, 0.922] — the CIs overlap by 0.001, so by your rule ("keep v2_1 only if
+   the winner is CLEARLY worse") V1 was installed. Per set, v2_1 is also higher on T1 (0.939 vs 0.912) and T2
+   corr+indep (0.926 vs 0.907), with lower N:C MAE (0.0029 vs 0.0039), and runs ~2× faster (29 vs 64 ms/cell; Macenko
+   costs ~35 ms/cell). Caveats: v2_1 was trained with colour/blur augmentation and is in-sample on T1b, so it's not a
+   like-for-like comparison. **Decide:** keep V1 (v0.2 as pushed) or switch `config.yaml` to `models/seg/v2_1/best.pt`
+   with `seg.variant: auto` (still in the repo; a one-line change). Among the new models, stain normalisation (V1/V2)
+   clearly helps on T2 (0.91 vs 0.78 for V0/V3), but V0/V3 are better on T1 — the gain is a domain-shift effect.
+6. Step 5 checker tolerance (see top): confirm you accept "per-cell floor on kept cells + identical gate status" as
+   the cross-device match rule.
 
