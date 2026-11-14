@@ -172,7 +172,11 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
                       "model_config": seg.model_config_file,
                       "model_config_sha256": sha256(seg.model_config_file) if seg.model_config_file else None,
                       "in_ch": seg.in_ch, "size": seg.size},
-              "seg_code": {p.name: sha256(p) for p in sorted(Path(cfg["seg"]["code_dir"]).glob("*.py"))}}
+              "seg_code": {p.name: sha256(p) for p in sorted(Path(cfg["seg"]["code_dir"]).glob("*.py"))},
+              "seg_variant": seg.variant,
+              "seg_preprocess_code": {"path": cfg["seg"]["preprocess_code"], "sha256": sha256(cfg["seg"]["preprocess_code"])},
+              "seg_preprocessing_file": ({"path": seg.preprocessing_file, "sha256": sha256(seg.preprocessing_file)}
+                                         if seg.preprocessing_file else None)}
     if detector_b is not None:
         models["detector_b"] = {"path": cfg["detector_b"]["weights"], "sha256": sha256(cfg["detector_b"]["weights"]),
                                 "names": detector_b.names, "imgsz": detector_b.imgsz}
@@ -182,6 +186,7 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
 
     ok, failed, skipped, times, flag_counts, n_cells = [], [], [], [], Counter(), 0
     drop_counts, grey_fovs, tag_counts, n_l_only = Counter(), [], Counter(), 0
+    status_counts, reason_counts, qc_counts = Counter(), Counter(), Counter()
     for k, (fid, path) in enumerate(fovs, 1):
         d = out / "fovs" / fid
         if (d / "done.json").exists() and not overwrite:
@@ -212,6 +217,12 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
                 flag_counts.update(r["flags"].split(";") if r["flags"] else ["(none)"])
             drop_counts.update(d["reason"] for d in info["dropped"])
             tag_counts.update(r["det_tag"] for r in rows)
+            status_counts.update(r["status"] for r in rows)
+            reason_counts.update(x for r in rows for x in r["reasons"].split(";") if x)
+            qc_counts.update(info["fov_qc"] or ["(none)"])
+            if info["fov_qc"]:
+                log.warning("[%d/%d] %s: image QC flags %s (FOV processed anyway) %s", k, len(fovs), fid,
+                            ",".join(info["fov_qc"]), info["fov_qc_metrics"])
             n_l_only += len(info["l_only"])
             if not rows:
                 log.warning("[%d/%d] %s: zero detections", k, len(fovs), fid)
@@ -271,6 +282,8 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
                                 "dropped_this_run": dict(drop_counts), "dropped_in_dropped_csv": n_dropped,
                                 "grayscale_fovs_this_run": len(grey_fovs),
                                 "det_tags_this_run": dict(tag_counts), "l_only_this_run": n_l_only,
+                                "status_this_run": dict(status_counts), "reasons_this_run": dict(reason_counts.most_common()),
+                                "fov_qc_this_run": dict(qc_counts), "macenko_fallbacks_this_run": seg.fallbacks,
                                 "l_only_in_l_only_csv": n_l_csv},
                      "flag_counts_this_run": dict(flag_counts.most_common()), "time_per_fov": tsum,
                      "grayscale_fovs": grey_fovs,
@@ -285,6 +298,12 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
     if mode != "single":
         log.info("  detection_mode %s: %s   l_only (B only, not segmented): %d -> l_only.csv", mode,
                  ", ".join(f"{k} {v}" for k, v in tag_counts.most_common()), n_l_only)
+    log.info("  status: %s", ", ".join(f"{k} {status_counts.get(k, 0)}" for k in ("measurable", "review", "excluded")))
+    for rs, n in reason_counts.most_common():
+        log.info("  reason %-32s %6d", rs, n)
+    log.info("  FOV image QC: %s", dict(qc_counts))
+    if seg.variant in ("V1", "V2"):
+        log.info("  Macenko fallbacks (crop left unchanged, training rule): %d", seg.fallbacks)
     for rs, n in drop_counts.most_common():
         log.info("  dropped (%s) %6d   -> dropped.csv", rs, n)
     if grey_fovs:

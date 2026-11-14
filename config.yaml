@@ -59,9 +59,12 @@ crop:
 
 seg:
   code_dir: vendor/tinyseg_retrain   # verbatim copies of tinyseg.py, aug_v2.py, data.py from tinyseg_retrain
-  weights: models/seg/v2_1/best.pt   # v2: models/seg/v2/best.pt (4-channel: RGB + detector-box mask)
-  model_config: null                 # null = config.json next to the weights ({"in_ch":..,"size":..});
+  weights: models/seg/V1_v3/best.pt   # v2: models/seg/v2/best.pt (4-channel: RGB + detector-box mask)
+  model_config: null                 # null = config.json next to the weights ({"in_ch":..,"size":..,"variant":..});
                                      # no config.json = 3-channel 160 px (v1), as in evaluate_v2.load_model
+  variant: V1                      # auto = the model's config.json; otherwise V0|V1|V2|V3|box and it MUST match it
+  preprocess_code: vendor/tinyseg_v3/preprocess.py   # training preprocessing (Macenko, LAB-CLAHE, H channel), verbatim
+  preprocessing_dir: null            # null = folder of the weights; must hold stain_ref.json (V1/V2) / h_stats.json (V3)
   batch_size: 64
   thr_nucleus: 0.5
   thr_cell: 0.5
@@ -73,8 +76,30 @@ postprocess:
                               # Any pixels a clip removes -> flag box_clipped and column clipped_frac
   nucleus_min_component_px: 20  # nucleus blobs smaller than this don't count towards multi_nucleus
   cell_at_edge_px: 2          # detector box within this many px of the FOV border -> flag cell_at_edge (real truncation)
-  drop_lost_frac: 0.5         # after overlap resolution: drop a cell that lost MORE than this share of its pixels to
-                              # higher-conf cells (null = keep all). Dropped cells are logged and listed in dropped.csv
+  drop_lost_frac: null        # v3: no cell is dropped for overlap. Measurement uses each cell's FULL mask (overlaps
+                              # allowed); the exclusive label map (higher confidence wins) is for display -> occluded_frac
+
+qc:                           # Stage 0, per FOV: flags only, the FOV is never skipped. Thresholds from 150 MAX06 FOVs
+  blur_lapvar_min: 8.0        # variance of the Laplacian (grey, half resolution); MAX06 min 9.7, median 18.7
+  mean_grey_min: 175          # MAX06 mean grey 194-217
+  mean_grey_max: 235
+  dark_frac_max: 0.05         # share of pixels with grey <= 20 (MAX06 max 0.001)
+  stained_frac_min: 0.003     # share of pixels with optical density > 0.15 in all channels (MAX06 0.0067-0.038)
+  stained_frac_max: 0.20
+
+size:                         # from the TinyUNet training split (7,311 cells with a cell outline), pixels at 0.155 um/px
+  box_area_min: 5640          # Stage 2 info flag box_size_out_of_range: detector box area outside [min, max]
+  box_area_max: 532895        # (0.5 x p0.1 cell area, 2.5 x p99.9 cell area)
+  cell_area_review_min: 14540 # p0.5  -> review: likely_inflammatory (too small for a squamous cell)
+  cell_area_review_max: 170120 # p99.5 -> review: likely_cluster (larger than nearly every training cell)
+  cell_area_implausible_min: 5640   # 0.5 x p0.1 -> excluded: implausible_mask
+  cell_area_implausible_max: 319737 # 1.5 x p99.9
+  nucleus_area_implausible_max: 11876 # 2 x p99.9 nucleus area
+
+gate:                         # Stage 5: measurable / review / excluded (+ reason codes)
+  occluded_review: 0.3        # occluded_frac above this -> review
+  s_only_review_conf: 0.25    # s_only (YOLO26l did not confirm) with conf below this -> review
+  nc_implausible_max: 1.0     # N:C (nucleus / cytoplasm) above this -> excluded: implausible_mask
 
 output:
   overlay: true

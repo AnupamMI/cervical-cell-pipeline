@@ -1,6 +1,6 @@
 {
  "fov": "cervical_0006",
- "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs/cervical_0006.tiff",
+ "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/cervical_0006.tiff",
  "source_sha256": "cd702c609a5d73a7f83816a66a0f7f67ad59f7ed1d1a09f27d2d1c457b329678",
  "image": {
   "src_dtype": "uint8",
@@ -9,8 +9,8 @@
  },
  "width": 2028,
  "height": 1520,
- "config_hash": "595250da78297490",
- "finished_utc": "2026-11-14T14:09:54+00:00",
+ "config_hash": "572722eaee3021bb",
+ "finished_utc": "2026-11-14T19:03:38+00:00",
  "detector": {
   "tiled": false,
   "n_raw": 31,
@@ -43,9 +43,21 @@
  ],
  "l_only": [],
  "detection_mode": "consensus_flag",
+ "fov_qc": [],
+ "fov_qc_metrics": {
+  "lap_var": 21.59611,
+  "mean_grey": 208.54517,
+  "dark_frac": 0.0,
+  "stained_frac": 0.00613
+ },
+ "status_counts": {
+  "measurable": 13,
+  "review": 2,
+  "excluded": 15
+ },
  "n_dropped_overlap": 0,
- "t_detect_s": 0.4069,
- "t_seg_s": 0.5185,
- "t_total_s": 1.4742,
- "t_post_s": 0.3728
+ "t_detect_s": 0.3872,
+ "t_seg_s": 1.5857,
+ "t_total_s": 2.5269,
+ "t_post_s": 0.3447
 }

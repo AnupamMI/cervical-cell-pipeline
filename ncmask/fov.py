@@ -1,4 +1,9 @@
-"""One FOV: detect -> crop -> segment -> post-process -> map back (overlap resolution) -> outputs."""
+"""One FOV (pipeline v3):
+Stage 0 image QC (flags only) -> Stage 1 detect (YOLO26s; YOLO26l consensus tag) -> Stage 2 containment suppression,
+cell_at_edge / crop_clamped, box size vs training -> Stage 3 crop (margin, mirror padding) + segment + centre component,
+nucleus within cell -> Stage 4 two layers: FULL per-cell masks (measurement, overlaps allowed) + EXCLUSIVE label map
+(display; higher confidence wins) -> occluded_frac, no cell dropped for overlap -> Stage 5 gate (measurable / review /
+excluded + reasons) -> outputs."""
 import json
 import logging
 import time
@@ -9,12 +14,14 @@ import numpy as np
 from . import geometry
 from .consensus import match_boxes
 from .postprocess import postprocess
+from .quality import gate, image_qc, nucleus_touches_cell_boundary
 
 log = logging.getLogger("ncmask.fov")
 
-CELL_COLS = ["fov", "cell_id", "box_x1", "box_y1", "box_x2", "box_y2", "conf", "cell_area_px", "nucleus_area_px",
-             "flags", "crop_x0", "crop_y0", "crop_x1", "crop_y1", "overlap_lost_px", "clipped_frac",
-             "det_tag", "b_conf", "ab_iou"]
+CELL_COLS = ["fov", "cell_id", "status", "reasons", "box_x1", "box_y1", "box_x2", "box_y2", "conf", "det_tag", "b_conf",
+             "ab_iou", "cell_area_px", "nucleus_area_px", "nc_ratio", "excl_cell_area_px", "excl_nucleus_area_px",
+             "occluded_frac", "flags", "fov_qc", "crop_x0", "crop_y0", "crop_x1", "crop_y1", "clipped_frac"]
+STATUS_BGR = {"measurable": (0, 200, 0), "review": (0, 165, 255), "excluded": (0, 0, 255)}
 L_ONLY_COLS = ["fov", "b_conf", "box_x1", "box_y1", "box_x2", "box_y2", "max_iou_with_A"]
 # COCO categories follow the training annotations (instances_default.json)
 CATEGORIES = [{"id": 1, "name": "nucleus-area", "supercategory": ""}, {"id": 2, "name": "cell-area", "supercategory": ""}]
@@ -91,9 +98,9 @@ def draw_overlay(img, rows, cell_lab, nuc_lab, max_side):
     for r in rows:
         cid = r["cell_id"]
         x1, y1, x2, y2 = (int(round(r[k])) for k in ("box_x1", "box_y1", "box_x2", "box_y2"))
-        flagged = is_flagged(r["flags"])
-        cv2.rectangle(ov, (x1, y1), (x2 - 1, y2 - 1), (0, 165, 255) if flagged else (255, 255, 0), 1)
-        if r["cell_area_px"]:
+        flagged = r.get("status", "measurable") != "measurable"
+        cv2.rectangle(ov, (x1, y1), (x2 - 1, y2 - 1), STATUS_BGR.get(r.get("status"), (255, 255, 0)), 2)
+        if r["excl_cell_area_px"]:
             sl = (slice(r["crop_y0"], r["crop_y1"]), slice(r["crop_x0"], r["crop_x1"]))
             cs, _ = cv2.findContours((cell_lab[sl] == cid).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
             if r.get("det_tag") == "s_only":   # detector A only: dashed outline
@@ -101,7 +108,7 @@ def draw_overlay(img, rows, cell_lab, nuc_lab, max_side):
                     draw_dashed(ov, c[:, 0, :] + (r["crop_x0"], r["crop_y0"]), (0, 220, 0), 2)
             else:
                 cv2.drawContours(ov, cs, -1, (0, 220, 0), 2, offset=(r["crop_x0"], r["crop_y0"]))
-        txt = f"{cid} {r['conf']:.2f}" + ("*" if flagged else "")
+        txt = f"{cid} {r['conf']:.2f}" + (f" {r['reasons'].split(';')[0]}" if flagged else "")
         org = (x1 + 3, max(14, y1 + 16))
         cv2.putText(ov, txt, org, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(ov, txt, org, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
@@ -137,6 +144,7 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
     """Returns (rows, coco dict, cell_lab, nuc_lab, overlay or None, info). Raises on internal errors."""
     t0 = time.perf_counter()
     H, W = img.shape[:2]
+    qc_flags, qc_metrics = image_qc(img, cfg["qc"])                       # Stage 0: flag, never skip
     boxes, conf, dinfo = detector(img)
     mode = cfg.get("consensus", {}).get("detection_mode", "single")
     dropped, l_only = [], []   # dropped: removed from the outputs, with the reason (done.json + run dropped.csv)
@@ -184,6 +192,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
         if b[0] <= e or b[1] <= e or b[2] >= W - e or b[3] >= H - e:
             rec["flags"].append("cell_at_edge")
         bw, bh = b[2] - b[0], b[3] - b[1]
+        if not cfg["size"]["box_area_min"] <= bw * bh <= cfg["size"]["box_area_max"]:
+            rec["flags"].append("box_size_out_of_range")
         if bw < min_px or bh < min_px:
             rec["flags"].append("box_too_small")
             rows_pre.append((rec, None)); continue
@@ -210,7 +220,10 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
                 r["flags"] = [f for f in r["flags"] if f not in ("no_nucleus", "multi_nucleus")] + ["empty_mask"]
         rec["flags"] += r["flags"]
         items.append({"cell_id": rec["cell_id"], "conf": rec["conf"], "win": win, "cell": cell, "nucleus": nuc})
-    cell_lab, nuc_lab, lost, won, dropped_ov = resolve_overlaps((H, W), items, pp["drop_lost_frac"])
+    if pp["drop_lost_frac"] is not None:
+        raise ValueError("pipeline v3 never drops cells for overlap: postprocess.drop_lost_frac must be null")
+    cell_lab, nuc_lab, lost, won, dropped_ov = resolve_overlaps((H, W), items, None)
+    full = {it["cell_id"]: it for it in items}
     for rec, win in rows_pre:
         if rec["cell_id"] in dropped_ov:
             f = dropped_ov[rec["cell_id"]]
@@ -223,39 +236,57 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
     t2 = time.perf_counter()
 
     eps = float(cfg["output"]["coco_polygon_epsilon_px"])
-    rows, anns = [], []
-    coco = {"info": {"description": f"nc_mask_pipeline output for {src_name}"},
+    rows, anns, anns_full = [], [], []
+    coco = {"info": {"description": f"nc_mask_pipeline v3 EXCLUSIVE layer (display) for {src_name}"},
             "images": [{"id": 1, "file_name": src_name, "width": W, "height": H}],
             "categories": CATEGORIES, "annotations": anns}
+    coco_full = {"info": {"description": f"nc_mask_pipeline v3 FULL layer (measurement; masks may overlap) for {src_name}"},
+                 "images": [{"id": 1, "file_name": src_name, "width": W, "height": H}],
+                 "categories": CATEGORIES, "annotations": anns_full}
     for rec, win in rows_pre:
         cid = rec["cell_id"]
         x1, y1, x2, y2 = rec["box"]
         flags = list(rec["flags"])
         if win is not None:
             sl = (slice(win.y0, win.y1), slice(win.x0, win.x1))
-            cm, nm = cell_lab[sl] == cid, nuc_lab[sl] == cid
+            cm, nm = cell_lab[sl] == cid, nuc_lab[sl] == cid                 # exclusive (display)
+            fc, fn = full[cid]["cell"], full[cid]["nucleus"]                 # full (measurement)
             if lost.get(cid, 0):
                 flags.append("overlap_lost")
             if won.get(cid, 0):
                 flags.append("overlap_won")
-            if not cm.any() and "empty_mask" not in flags:
-                flags.append("empty_mask")  # everything went to higher-confidence cells
-            elif cm.any() and not nm.any() and "no_nucleus" not in flags and "empty_mask" not in flags:
-                flags.append("no_nucleus")
-            ca, na = int(cm.sum()), int(nm.sum())
+            ca, na = int(fc.sum()), int(fn.sum())
+            eca, ena = int(cm.sum()), int(nm.sum())
+            occl = lost.get(cid, 0) / ca if ca else 0.0
+            touch = nucleus_touches_cell_boundary(fc, fn)
             crop_xy = (win.x0, win.y0, win.x1, win.y1)
         else:
-            cm = nm = None; ca = na = 0; crop_xy = ("", "", "", "")
-        row = {"fov": fov_id, "cell_id": cid, "box_x1": round(x1, 2), "box_y1": round(y1, 2),
-               "box_x2": round(x2, 2), "box_y2": round(y2, 2), "conf": round(rec["conf"], 5),
-               "cell_area_px": ca, "nucleus_area_px": na, "flags": ";".join(flags),
+            cm = nm = fc = fn = None; ca = na = eca = ena = 0; occl = 0.0; touch = False; crop_xy = ("", "", "", "")
+        nc = na / (ca - na) if ca > na and na > 0 else float("nan")
+        status, reasons = gate(flags, ca, na, nc, occl, rec["det_tag"], rec["conf"], touch, cfg["size"], cfg["gate"])
+        row = {"fov": fov_id, "cell_id": cid, "status": status, "reasons": ";".join(reasons),
+               "box_x1": round(x1, 2), "box_y1": round(y1, 2), "box_x2": round(x2, 2), "box_y2": round(y2, 2),
+               "conf": round(rec["conf"], 5), "det_tag": rec["det_tag"], "b_conf": rec["b_conf"], "ab_iou": rec["ab_iou"],
+               "cell_area_px": ca, "nucleus_area_px": na, "nc_ratio": round(nc, 6) if nc == nc else "",
+               "excl_cell_area_px": eca, "excl_nucleus_area_px": ena, "occluded_frac": round(occl, 4),
+               "flags": ";".join(flags), "fov_qc": ";".join(qc_flags),
                "crop_x0": crop_xy[0], "crop_y0": crop_xy[1], "crop_x1": crop_xy[2], "crop_y1": crop_xy[3],
-               "overlap_lost_px": lost.get(cid, 0), "clipped_frac": round(rec.get("clipped_frac", 0.0), 5),
-               "det_tag": rec["det_tag"], "b_conf": rec["b_conf"], "ab_iou": rec["ab_iou"]}
+               "clipped_frac": round(rec.get("clipped_frac", 0.0), 5)}
         rows.append(row)
-        attrs = {"cell_id": cid, "conf": row["conf"], "flags": flags, "det_box_xyxy": [row[k] for k in
-                 ("box_x1", "box_y1", "box_x2", "box_y2")], "overlap_lost_px": row["overlap_lost_px"],
-                 "clipped_frac": row["clipped_frac"], "det_tag": rec["det_tag"], "b_conf": rec["b_conf"],
+        fattrs = {"cell_id": cid, "status": status, "reasons": reasons, "conf": row["conf"], "det_tag": rec["det_tag"],
+                  "occluded_frac": row["occluded_frac"], "nc_ratio": row["nc_ratio"]}
+        if ca:
+            anns_full.append({"id": len(anns_full) + 1, "image_id": 1, "category_id": 2, "iscrowd": 0, "area": ca,
+                              "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
+                              "segmentation": polygons(fc, (win.x0, win.y0), eps), "attributes": fattrs})
+        if na:
+            anns_full.append({"id": len(anns_full) + 1, "image_id": 1, "category_id": 1, "iscrowd": 0, "area": na,
+                              "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
+                              "segmentation": polygons(fn, (win.x0, win.y0), eps), "attributes": {"cell_id": cid}})
+        ca, na = eca, ena                                                       # exclusive layer below
+        attrs = {"cell_id": cid, "conf": row["conf"], "status": status, "reasons": reasons, "flags": flags,
+                 "det_box_xyxy": [row[k] for k in ("box_x1", "box_y1", "box_x2", "box_y2")],
+                 "occluded_frac": row["occluded_frac"], "det_tag": rec["det_tag"], "b_conf": rec["b_conf"],
                  "ab_iou": rec["ab_iou"]}
         anns.append({"id": len(anns) + 1, "image_id": 1, "category_id": 2, "iscrowd": 0, "area": ca,
                      "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
@@ -269,6 +300,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
     overlay = draw_overlay(img, rows, cell_lab, nuc_lab, cfg["output"]["overlay_max_side"]) \
         if cfg["output"]["overlay"] else None
     info = {"detector": dinfo, "n_cells": len(rows), "dropped": dropped, "l_only": l_only, "detection_mode": mode,
+            "fov_qc": qc_flags, "fov_qc_metrics": qc_metrics, "coco_full": coco_full,
+            "status_counts": {k: sum(r["status"] == k for r in rows) for k in ("measurable", "review", "excluded")},
             "n_dropped_overlap": len(dropped_ov), "t_detect_s": round(t_det, 4), "t_seg_s": round(t_seg, 4),
             "t_total_s": round(time.perf_counter() - t0, 4), "t_post_s": round(t2 - t1 - t_seg, 4)}
     return rows, coco, cell_lab, nuc_lab, overlay, info
@@ -284,7 +317,8 @@ def write_fov_outputs(d, rows, coco, cell_lab, nuc_lab, overlay, meta):
             raise IOError(f"could not write {d / name}")
     if overlay is not None and not cv2.imwrite(str(d / "overlay.png"), overlay):
         raise IOError(f"could not write {d / 'overlay.png'}")
-    (d / "cells.coco.json").write_text(json.dumps(coco))
+    (d / "cells.coco.json").write_text(json.dumps(coco))                       # exclusive layer (display)
+    (d / "cells_full.coco.json").write_text(json.dumps(meta.pop("coco_full")))   # full layer (measurement)
     with open(d / "cells.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=CELL_COLS); w.writeheader(); w.writerows(rows)
     if meta.get("detection_mode", "single") != "single":

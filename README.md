@@ -1,15 +1,56 @@
-# cervical-cell-pipeline
+# cervical-cell-pipeline (v0.2)
 
-Masking-only cell pipeline for Pap-smear cervical cytology FOVs (2028x1520, ~0.155 µm/px):
+Masking pipeline for Pap-smear cervical cytology FOVs (2028x1520, ~0.155 µm/px). **v0.2** = pipeline v3 with the
+TinyUNet v3 segmenter `models/seg/V1_v3/best.pt` (winner: **V1**). v0.1 (pipeline v1 + TinyUNet v2_1) stays available:
+`git checkout v0.1`.
+
+## Architecture
 
 ```
-FOV image ─► YOLO26s cell boxes (conf 0.15) ─► [YOLO26l @1280 cross-check: tags consensus / s_only, never filters]
-          ─► crop (box + 17 % margin, mirror padding) ─► TinyUNet v2_1 (cell + nucleus)
-          ─► post-process per box ─► paste into FOV (overlaps → higher confidence) ─► label maps, COCO, CSV, overlay
+Stage 0  image QC (blur, exposure, stain range)            -> FOV flags only, never skipped
+Stage 1  YOLO26s cell boxes (conf 0.15)                     -> the only source of candidate cells
+         YOLO26l @1280 cross-check (consensus_flag)         -> tag consensus / s_only, never filters (auto-off without weights)
+Stage 2  containment suppression (0.8, min area ratio 0.4), cell_at_edge (box <= 2 px from the FOV edge),
+         crop_clamped (info), box size vs the training distribution
+Stage 3  crop = box + 0.17 margin, mirror padding -> input variant (as trained) -> TinyUNet -> centre component,
+         nucleus within the cell
+Stage 4  two layers: FULL per-cell masks (measurement; overlaps allowed) + EXCLUSIVE label map (display);
+         occluded_frac; no cell dropped for overlap
+Stage 5  gate: measurable / review / excluded + reason codes (thresholds in config.yaml)
+outputs  cells.csv, cells_full.coco.json + cells.coco.json (exclusive), label maps, overlay, dropped.csv (Stage 2),
+         l_only.csv, run_manifest.json (config, model + preprocessing SHA256s, versions)
 ```
 
-It produces masks only, with no N:C ratio or classification. Version **v0.1** = the validated pipeline
-(YOLO26s + YOLO26l consensus_flag + TinyUNet v2_1).
+## Results summary
+
+## Winner
+
+**V1** — decided on T1 + T2 corrected+independent.
+
+Primary = nucleus Dice with YOLO26s boxes, mean of the set means; CI = cluster bootstrap within each set.
+
+| model | primary | 95 % CI | T1 | T2 corr+indep | N:C MAE | cell Dice |
+|---|---|---|---|---|---|---|
+| V0 | 0.8538 | [0.8311, 0.8743] | 0.9257 [0.9058, 0.9401] | 0.7819 [0.7402, 0.8229] | 0.0055 | 0.9699 |
+| V1 | 0.9096 | [0.8952, 0.9222] | 0.9120 [0.8914, 0.9282] | 0.9072 [0.8862, 0.9244] | 0.0039 | 0.9707 |
+| V2 | 0.9084 | [0.8962, 0.9186] | 0.9063 [0.8845, 0.9233] | 0.9104 [0.8978, 0.9227] | 0.0046 | 0.9677 |
+| V3 | 0.8607 | [0.8351, 0.8842] | 0.9383 [0.9227, 0.9481] | 0.7830 [0.7351, 0.8280] | 0.0053 | 0.9719 |
+| v2_1 (old) | 0.9321 | [0.9212, 0.9406] | 0.9388 [0.9210, 0.9502] | 0.9255 [0.9105, 0.9377] | 0.0029 | 0.9741 |
+
+Reasoning:
+
+- V1 beats V0: primary 0.9096 [0.8952, 0.9222] vs V0 0.8538 [0.8311, 0.8743], no overlap.
+- V1 is not clearly worse than the old v2_1 on T1 or T2 (CIs overlap or V1 is higher).
+
+Full tables (T1 clean 212, T1b 50 ZIP01, T2 92 NC003 crop-based; GT and YOLO26s boxes; 95 % CIs): `reports/RESULTS.md`.
+Production sheets: `reports/sheets_1fov/`, `reports/sheets_5fov/` (left YOLO26s boxes, middle masks, right status).
+
+## Retrain TinyUNet v3
+
+`training/tinyseg_v3/`: `make_split.py` (leak-free split: same-cell-merged FOV groups; name lists in `splits/`),
+`build_cache.py` (Macenko reference / H stats from train crops only), `train_v3.py --variant V0|V1|V2|V3 --epochs 40`
+(v2_1 recipe from scratch, no colour augmentation), `eval_final.py` (all test sets), `overnight.sh` (the unattended
+orchestration used for this release). The training images themselves are not in the repo (tinyseg_retrain data).
 
 ## Quick start
 
@@ -35,7 +76,7 @@ config file. Without the YOLO26l weights the consensus stage switches itself off
 run log says so; masks and cells are unchanged, only the `det_tag` column is `single`.
 
 ### Weights
-In git: YOLO26s detector and the TinyUNet weights. YOLO26l (106 MB) is a GitHub Release asset (`v0.1-models`),
+In git: YOLO26s detector and the TinyUNet weights. YOLO26l (106 MB) is a GitHub Release asset (`v0.1-models`; used by v0.2 too),
 fetched by `scripts/fetch_release_weights.py` (token from the `GH_TOKEN` environment variable, SHA256 verified).
 Sizes and SHA256s: [`models/WEIGHTS.md`](models/WEIGHTS.md).
 

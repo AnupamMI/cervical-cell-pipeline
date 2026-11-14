@@ -5,6 +5,12 @@ Pass when, for every FOV in the reference: the output exists, has the same numbe
 matched one-to-one to an output cell (detector box IoU >= --box-iou, Hungarian), the POOLED mask Dice over all matched
 cells of the FOV is >= --min-dice (0.99) for the cell masks and for the nucleus masks, and EVERY matched cell has mask
 Dice >= --min-cell-dice (0.95; both empty counts as 1.0). Cells between the two thresholds are listed as warnings.
+Pipeline v3 references (cells.csv with a `status` column): every matched cell must get the SAME gate status
+(measurable / review / excluded), and the per-cell floor applies to the cells the gate keeps (measurable + review),
+i.e. every mask that produces a measurement; excluded cells still count in the pooled Dice and are listed when below
+the floor (info, not a failure). Measured on the Jetson for v0.2 (TinyUNet v3 V1, GPU vs CPU): an excluded cell_at_edge
+cell whose nucleus is cut by the image border sits at the probability threshold, nucleus 256 px (GPU) vs 45 px (CPU),
+Dice 0.30, while every kept cell had Dice >= 0.96 and pooled Dice >= 0.996.
 Why pooled + per-cell floor: across devices (Jetson GPU vs CPU vs Colab T4) detector boxes move by < 0.2 px, which
 shifts the crop rounding and changes a few pixels of small nuclei (measured on the Jetson, GPU vs CPU: identical cell
 counts, pooled Dice > 0.99, single nucleus masks down to 0.984). A real regression still fails both rules.
@@ -68,6 +74,10 @@ def main():
             print(f"FAIL {fov}: {(M[ri, ci] < a.box_iou).sum()} cell(s) without a matching box (IoU >= {a.box_iou})"); ok = False; continue
         labs = {k: (cv2.imread(str(e / f"{k}_labels.png"), cv2.IMREAD_UNCHANGED), cv2.imread(str(o / f"{k}_labels.png"), cv2.IMREAD_UNCHANGED))
                 for k in ("cell", "nucleus")}
+        has_status = "status" in er[0] and "status" in orr[0]
+        st_bad = [(er[i]["cell_id"], er[i]["status"], orr[j]["status"]) for i, j in zip(ri, ci)
+                  if has_status and er[i]["status"] != orr[j]["status"]]
+        kept = {er[i]["cell_id"]: (not has_status or er[i]["status"] != "excluded") for i in ri}
         ds, pooled = [], {}
         for k, (le, lo) in labs.items():
             inter = tot = 0
@@ -77,13 +87,17 @@ def main():
                 ds.append((dice(x, y), k, er[i]["cell_id"]))
             pooled[k] = 1.0 if tot == 0 else 2 * inter / tot
         mn = min(d for d, *_ in ds); worst = min(worst, mn)
-        floor_bad = [x for x in ds if x[0] < a.min_cell_dice]
-        warn = [x for x in ds if a.min_cell_dice <= x[0] < a.min_dice]
+        floor_bad = [x for x in ds if x[0] < a.min_cell_dice and kept[x[2]]]
+        floor_info = [x for x in ds if x[0] < a.min_cell_dice and not kept[x[2]]]
+        warn = [x for x in ds if a.min_cell_dice <= x[0] < a.min_dice and kept[x[2]]]
         pool_bad = [k for k, v in pooled.items() if v < a.min_dice]
-        fail = bool(floor_bad or pool_bad)
+        fail = bool(floor_bad or pool_bad or st_bad)
         print(f"{'FAIL' if fail else 'ok  '} {fov}: {len(er)} cells, pooled Dice cell {pooled['cell']:.4f} nucleus {pooled['nucleus']:.4f}, "
               f"min single-mask Dice {mn:.4f}" + (f"; {len(warn)} mask(s) in [{a.min_cell_dice}, {a.min_dice})" if warn else "")
-              + (f"; {len(floor_bad)} mask(s) < {a.min_cell_dice}" if floor_bad else ""))
+              + (f"; {len(floor_bad)} kept mask(s) < {a.min_cell_dice}" if floor_bad else "")
+              + (f"; {len(st_bad)} status mismatch(es) {st_bad}" if st_bad else ""))
+        for d, k, cid in floor_info:
+            print(f"     info: excluded cell {cid} {k} mask Dice {d:.4f} (excluded on both sides; not measured)")
         ok &= not fail
     print(f"\n{'PASS' if ok else 'FAIL'}: {len(fovs)} FOV(s) checked, worst mask Dice {worst:.4f}")
     sys.exit(0 if ok else 1)

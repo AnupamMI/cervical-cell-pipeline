@@ -1,6 +1,6 @@
 {
  "fov": "cervical_0001",
- "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs/cervical_0001.tiff",
+ "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/cervical_0001.tiff",
  "source_sha256": "dd2b87c51ae688a8ddf655e99fff667551e07e90c6dc2b46db6bedd35dd8fe40",
  "image": {
   "src_dtype": "uint8",
@@ -9,8 +9,8 @@
  },
  "width": 2028,
  "height": 1520,
- "config_hash": "595250da78297490",
- "finished_utc": "2026-11-14T14:09:45+00:00",
+ "config_hash": "572722eaee3021bb",
+ "finished_utc": "2026-11-14T19:03:24+00:00",
  "detector": {
   "tiled": false,
   "n_raw": 38,
@@ -26,38 +26,25 @@
   },
   "n_contained_dropped": 0
  },
- "n_cells": 36,
- "dropped": [
-  {
-   "reason": "overlap_lost",
-   "cell_id": 33,
-   "conf": 0.39212,
-   "box": [
-    1450.03,
-    1028.72,
-    1781.03,
-    1236.01
-   ],
-   "detail": "lost 0.95 of its pixels to higher-confidence cells"
-  },
-  {
-   "reason": "overlap_lost",
-   "cell_id": 37,
-   "conf": 0.19622,
-   "box": [
-    1885.59,
-    819.7,
-    2028.0,
-    1281.55
-   ],
-   "detail": "lost 0.70 of its pixels to higher-confidence cells"
-  }
- ],
+ "n_cells": 38,
+ "dropped": [],
  "l_only": [],
  "detection_mode": "consensus_flag",
- "n_dropped_overlap": 2,
- "t_detect_s": 0.2495,
- "t_seg_s": 0.5016,
- "t_total_s": 1.3596,
- "t_post_s": 0.4074
+ "fov_qc": [],
+ "fov_qc_metrics": {
+  "lap_var": 26.62124,
+  "mean_grey": 203.77969,
+  "dark_frac": 0.0,
+  "stained_frac": 0.01365
+ },
+ "status_counts": {
+  "measurable": 17,
+  "review": 6,
+  "excluded": 15
+ },
+ "n_dropped_overlap": 0,
+ "t_detect_s": 0.4066,
+ "t_seg_s": 2.5994,
+ "t_total_s": 3.6697,
+ "t_post_s": 0.4184
 }

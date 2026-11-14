@@ -89,7 +89,7 @@ def test_consensus_auto_off_without_weights(tmp_path):
     import yaml
     from ncmask import config as cfgmod
     c = yaml.safe_load((ROOT / "config.yaml").read_text())
-    for sec, k in (("detector", "weights"), ("seg", "weights"), ("seg", "code_dir")):
+    for sec, k in (("detector", "weights"), ("seg", "weights"), ("seg", "code_dir"), ("seg", "preprocess_code")):
         c[sec][k] = str(ROOT / c[sec][k])
     c["detector_b"]["weights"] = str(tmp_path / "missing.pt")
     p = tmp_path / "c.yaml"; p.write_text(yaml.safe_dump(c))

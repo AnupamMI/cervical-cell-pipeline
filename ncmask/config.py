@@ -20,7 +20,11 @@ REQUIRED = {
     "logging": ["level"],
 }
 PATH_KEYS = [("detector", "weights"), ("seg", "code_dir"), ("seg", "weights"), ("seg", "model_config"),
-             ("detector_b", "weights")]
+             ("detector_b", "weights"), ("seg", "preprocess_code"), ("seg", "preprocessing_dir")]
+V3_SECTIONS = {"qc": ["blur_lapvar_min", "mean_grey_min", "mean_grey_max", "dark_frac_max", "stained_frac_min", "stained_frac_max"],
+               "size": ["box_area_min", "box_area_max", "cell_area_review_min", "cell_area_review_max",
+                        "cell_area_implausible_min", "cell_area_implausible_max", "nucleus_area_implausible_max"],
+               "gate": ["occluded_review", "s_only_review_conf", "nc_implausible_max"]}
 MODES = ("single", "consensus_flag", "consensus_filter")
 
 
@@ -40,6 +44,17 @@ def load(path):
         for k in keys:
             if k not in cfg[sec]:
                 raise ConfigError(f"config: missing key '{sec}.{k}'")
+    for sec, keys in V3_SECTIONS.items():
+        if sec not in cfg or not isinstance(cfg[sec], dict):
+            raise ConfigError(f"config: missing section '{sec}'")
+        for k in keys:
+            if k not in cfg[sec] or not isinstance(cfg[sec][k], (int, float)) or isinstance(cfg[sec][k], bool):
+                raise ConfigError(f"config: '{sec}.{k}' missing or not a number")
+    cfg["seg"].setdefault("variant", "auto"); cfg["seg"].setdefault("preprocessing_dir", None)
+    if cfg["seg"]["variant"] not in ("auto", "V0", "V1", "V2", "V3", "box"):
+        raise ConfigError("seg.variant must be auto | V0 | V1 | V2 | V3 | box")
+    if "preprocess_code" not in cfg["seg"]:
+        raise ConfigError("config: missing key 'seg.preprocess_code'")
     for k in ("device", "seed"):
         if k not in cfg:
             raise ConfigError(f"config: missing key '{k}'")
@@ -119,6 +134,10 @@ def validate(c):
     for sec, k in files:
         if not Path(c[sec][k]).is_file():
             raise ConfigError(f"{sec}.{k}: file not found: {c[sec][k]}")
+    if not Path(s["preprocess_code"]).is_file():
+        raise ConfigError(f"seg.preprocess_code: file not found: {s['preprocess_code']}")
+    if s["preprocessing_dir"] is not None and not Path(s["preprocessing_dir"]).is_dir():
+        raise ConfigError(f"seg.preprocessing_dir: folder not found: {s['preprocessing_dir']}")
     if not (Path(s["code_dir"]) / "tinyseg.py").is_file():
         raise ConfigError(f"seg.code_dir: no tinyseg.py in {s['code_dir']}")
     if s["model_config"] is not None and not Path(s["model_config"]).is_file():

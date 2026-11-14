@@ -98,6 +98,7 @@ def test_seg_parity(setup, cfg, name, edge_mode):
     c = copy.deepcopy(cfg)
     c["seg"]["weights"] = weights
     c["seg"]["model_config"] = None
+    c["seg"]["variant"] = "auto"                                # this test swaps models: take each one's own variant
     c["seg"]["batch_size"] = 7                                   # different batching than the original
     c["crop"]["edge_mode"] = edge_mode
     seg = SegModel(c, device)

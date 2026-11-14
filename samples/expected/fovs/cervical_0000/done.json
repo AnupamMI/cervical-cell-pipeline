@@ -1,6 +1,6 @@
 {
  "fov": "cervical_0000",
- "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs/cervical_0000.tiff",
+ "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/cervical_0000.tiff",
  "source_sha256": "27e21a8bcc4e39fa38e5d05917fee95560c91f504c0391717368e1c75b13984f",
  "image": {
   "src_dtype": "uint8",
@@ -9,8 +9,8 @@
  },
  "width": 2028,
  "height": 1520,
- "config_hash": "595250da78297490",
- "finished_utc": "2026-11-14T14:09:44+00:00",
+ "config_hash": "572722eaee3021bb",
+ "finished_utc": "2026-11-14T19:03:20+00:00",
  "detector": {
   "tiled": false,
   "n_raw": 39,
@@ -26,7 +26,7 @@
   },
   "n_contained_dropped": 1
  },
- "n_cells": 34,
+ "n_cells": 38,
  "dropped": [
   {
    "reason": "contained",
@@ -39,61 +39,25 @@
     680.62
    ],
    "detail": "1.00 of its area inside a higher-confidence box"
-  },
-  {
-   "reason": "overlap_lost",
-   "cell_id": 21,
-   "conf": 0.67743,
-   "box": [
-    1274.87,
-    1014.97,
-    1533.47,
-    1202.83
-   ],
-   "detail": "lost 0.94 of its pixels to higher-confidence cells"
-  },
-  {
-   "reason": "overlap_lost",
-   "cell_id": 26,
-   "conf": 0.52828,
-   "box": [
-    857.55,
-    413.01,
-    1190.34,
-    764.42
-   ],
-   "detail": "lost 0.97 of its pixels to higher-confidence cells"
-  },
-  {
-   "reason": "overlap_lost",
-   "cell_id": 29,
-   "conf": 0.40317,
-   "box": [
-    560.86,
-    610.7,
-    830.73,
-    919.7
-   ],
-   "detail": "lost 0.90 of its pixels to higher-confidence cells"
-  },
-  {
-   "reason": "overlap_lost",
-   "cell_id": 34,
-   "conf": 0.24199,
-   "box": [
-    1402.17,
-    0.0,
-    1811.8,
-    63.65
-   ],
-   "detail": "lost 0.77 of its pixels to higher-confidence cells"
   }
  ],
  "l_only": [],
  "detection_mode": "consensus_flag",
- "n_dropped_overlap": 4,
- "t_detect_s": 3.2461,
- "t_seg_s": 0.7706,
- "t_total_s": 4.7043,
- "t_post_s": 0.4468
+ "fov_qc": [],
+ "fov_qc_metrics": {
+  "lap_var": 21.91483,
+  "mean_grey": 204.41353,
+  "dark_frac": 0.0,
+  "stained_frac": 0.01217
+ },
+ "status_counts": {
+  "measurable": 12,
+  "review": 8,
+  "excluded": 18
+ },
+ "n_dropped_overlap": 0,
+ "t_detect_s": 2.1484,
+ "t_seg_s": 2.6506,
+ "t_total_s": 5.5132,
+ "t_post_s": 0.4276
 }

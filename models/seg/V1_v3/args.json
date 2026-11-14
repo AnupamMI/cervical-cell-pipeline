@@ -1,0 +1,10 @@
+{
+ "variant": "V1",
+ "out": "runs/V1",
+ "epochs": 40,
+ "bs": 16,
+ "lr": 0.003,
+ "workers": 10,
+ "seed": 42,
+ "limit": 0
+}

@@ -1,9 +1,9 @@
 {
  "status": "finished",
- "started_utc": "2026-11-14T14:09:34+00:00",
- "input": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs",
+ "started_utc": "2026-11-14T19:03:10+00:00",
+ "input": "/home/jetson/Downloads/cervical-cell-pipeline/samples",
  "output": "/home/jetson/Downloads/cervical-cell-pipeline/samples/expected",
- "config_hash": "595250da78297490",
+ "config_hash": "572722eaee3021bb",
  "config": {
   "input": {
    "extensions": [
@@ -53,8 +53,11 @@
   },
   "seg": {
    "code_dir": "/home/jetson/Downloads/cervical-cell-pipeline/vendor/tinyseg_retrain",
-   "weights": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/best.pt",
+   "weights": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/V1_v3/best.pt",
    "model_config": null,
+   "variant": "V1",
+   "preprocess_code": "/home/jetson/Downloads/cervical-cell-pipeline/vendor/tinyseg_v3/preprocess.py",
+   "preprocessing_dir": null,
    "batch_size": 64,
    "thr_nucleus": 0.5,
    "thr_cell": 0.5
@@ -63,7 +66,29 @@
    "clip_tolerance_px": "margin",
    "nucleus_min_component_px": 20,
    "cell_at_edge_px": 2,
-   "drop_lost_frac": 0.5
+   "drop_lost_frac": null
+  },
+  "qc": {
+   "blur_lapvar_min": 8.0,
+   "mean_grey_min": 175,
+   "mean_grey_max": 235,
+   "dark_frac_max": 0.05,
+   "stained_frac_min": 0.003,
+   "stained_frac_max": 0.2
+  },
+  "size": {
+   "box_area_min": 5640,
+   "box_area_max": 532895,
+   "cell_area_review_min": 14540,
+   "cell_area_review_max": 170120,
+   "cell_area_implausible_min": 5640,
+   "cell_area_implausible_max": 319737,
+   "nucleus_area_implausible_max": 11876
+  },
+  "gate": {
+   "occluded_review": 0.3,
+   "s_only_review_conf": 0.25,
+   "nc_implausible_max": 1.0
   },
   "output": {
    "overlay": true,
@@ -85,10 +110,10 @@
    "imgsz": 640
   },
   "seg": {
-   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/best.pt",
-   "sha256": "ab16420ea57123d87e0380ce5f2971410a03d25d5d25f29be19c1fc1e062647b",
-   "model_config": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/config.json",
-   "model_config_sha256": "ea2c3028638a8ef76629accd9f539f107a8c707d7a50176accab318a733d965f",
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/V1_v3/best.pt",
+   "sha256": "8e5a821c63e6b6afa3bf6fee31f8a588c397f9f184a767b8e524e9e173a62be7",
+   "model_config": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/V1_v3/config.json",
+   "model_config_sha256": "be17b06daf8fbfd449f510da036478cf1d5e93ca3deeb116d27284ff2256d611",
    "in_ch": 3,
    "size": 224
   },
@@ -96,6 +121,15 @@
    "aug_v2.py": "a10e9e923ed4c2954585ad63c0607ddedb897fd2bab8c73c95d9b9314f4f340f",
    "data.py": "2d1ab4581d2adda7e1827539c3c984a97d265149f4406e978c33effd85e1f24f",
    "tinyseg.py": "442f2195de63a015402320e94e6b46559cba12af906134025e8119a4d43c8f62"
+  },
+  "seg_variant": "V1",
+  "seg_preprocess_code": {
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/vendor/tinyseg_v3/preprocess.py",
+   "sha256": "50b624e412419fe46835c24fc99b45c698f18e69bf3ca6b519c5db2447cdd3dc"
+  },
+  "seg_preprocessing_file": {
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/V1_v3/stain_ref.json",
+   "sha256": "0273addb462ccbeed1a0cb8bbec577c3a7c5fbf65f44b49284f9d1c32dce52f9"
   },
   "detector_b": {
    "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/detector_b/yolo26l_1280_best.pt",
@@ -120,43 +154,62 @@
   "gpu": "Orin"
  },
  "device": "cuda",
- "finished_utc": "2026-11-14T14:09:59+00:00",
- "wall_time_s": 24.25,
+ "finished_utc": "2026-11-14T19:03:47+00:00",
+ "wall_time_s": 36.8,
  "counts": {
   "fovs_listed": 10,
   "fovs_ok": 10,
   "fovs_failed": 0,
   "fovs_skipped_already_done": 0,
-  "cells_this_run": 302,
-  "cells_in_cells_csv": 302,
+  "cells_this_run": 316,
+  "cells_in_cells_csv": 316,
   "ignored_files": 0,
   "dropped_this_run": {
-   "contained": 4,
-   "overlap_lost": 14
+   "contained": 4
   },
-  "dropped_in_dropped_csv": 18,
+  "dropped_in_dropped_csv": 4,
   "grayscale_fovs_this_run": 0,
   "det_tags_this_run": {
-   "consensus": 141,
-   "s_only": 161
+   "consensus": 145,
+   "s_only": 171
   },
   "l_only_this_run": 3,
+  "status_this_run": {
+   "excluded": 148,
+   "review": 43,
+   "measurable": 125
+  },
+  "reasons_this_run": {
+   "cell_at_edge": 143,
+   "no_nucleus": 46,
+   "multi_nucleus": 39,
+   "nucleus_touches_cell_boundary": 31,
+   "occluded": 30,
+   "likely_inflammatory": 27,
+   "s_only_low_conf": 22,
+   "likely_cluster": 2,
+   "implausible_mask": 1
+  },
+  "fov_qc_this_run": {
+   "(none)": 10
+  },
+  "macenko_fallbacks_this_run": 53,
   "l_only_in_l_only_csv": 3
  },
  "flag_counts_this_run": {
-  "crop_clamped": 169,
-  "cell_at_edge": 138,
-  "overlap_won": 135,
+  "crop_clamped": 174,
+  "cell_at_edge": 143,
+  "overlap_won": 142,
   "overlap_lost": 135,
-  "no_nucleus": 33,
-  "multi_nucleus": 32,
-  "(none)": 25,
-  "box_too_tight": 18
+  "no_nucleus": 46,
+  "multi_nucleus": 39,
+  "(none)": 26,
+  "box_too_tight": 22
  },
  "time_per_fov": {
-  "mean_s": 1.967,
-  "median_s": 1.717,
-  "max_s": 5.0
+  "mean_s": 3.259,
+  "median_s": 2.914,
+  "max_s": 5.816
  },
  "grayscale_fovs": [],
  "failures": [],

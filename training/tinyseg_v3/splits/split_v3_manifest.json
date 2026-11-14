@@ -1,0 +1,40 @@
+{
+ "seed": 42,
+ "train_frac_by_crops": 0.85,
+ "unit": "same-cell-merged FOV group (explore/fov_groups.csv)",
+ "counts": {
+  "train": 8150,
+  "val": 1432,
+  "t1_clean212": 212,
+  "t1b_check_zip01": 50
+ },
+ "groups": {
+  "train": 1830,
+  "val": 316,
+  "held_out": 101
+ },
+ "t1_and_t1b_overlap": [
+  "b1_cervical_0979_cell_3.png"
+ ],
+ "held_out_groups_other_crops_not_used": 340,
+ "unlabelled_dropped": 5,
+ "train_crops_with_nuc_and_cell": 7291,
+ "val_crops_with_nuc_and_cell": 1291,
+ "by_batch": {
+  "train": {
+   "b1": 7039,
+   "b3": 962,
+   "b2": 149
+  },
+  "val": {
+   "b1": 1237,
+   "b3": 169,
+   "b2": 26
+  }
+ },
+ "leak_checks": {
+  "groups_in_two_sets": 0,
+  "same_cell_pairs_across_sets": 0,
+  "pairs_checked": 494
+ }
+}

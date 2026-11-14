@@ -44,6 +44,14 @@ def _box_channel(crop_hw, box, size):
     return cv2.resize(m, (size,) * 2, interpolation=cv2.INTER_NEAREST)[..., None]
 
 
+def load_preprocess(path):
+    """The training preprocessing module (tinyseg_v3 phase2/preprocess.py, vendored verbatim), unique module name."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("tinyseg_v3_preprocess", str(path))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
 class SegModel:
     def __init__(self, cfg, device):
         s = cfg["seg"]
@@ -56,6 +64,29 @@ class SegModel:
         self.size = int(mc.get("size", self.tinyseg.SIZE))
         if self.in_ch not in (3, 4):
             raise ValueError(f"unsupported in_ch {self.in_ch}")
+        # input variant: from the model's own config.json (TinyUNet v3 runs write it); legacy models without it are
+        # V0 (3-ch) or the 4-ch detector-box model v2 ("box"). The pipeline config must agree, else fail loudly.
+        self.variant = mc.get("variant") or ("box" if self.in_ch == 4 else "V0")
+        want = s.get("variant", "auto")
+        if want not in ("auto", self.variant):
+            raise ValueError(f"seg.variant is {want!r} but the model's config.json says {self.variant!r} ({cfg_file})")
+        self.pp, self.ref, self.hstats = None, None, None
+        self.fallbacks = 0
+        if self.variant in ("V1", "V2", "V3"):
+            self.pp = load_preprocess(s["preprocess_code"])
+            pdir = Path(s["preprocessing_dir"]) if s.get("preprocessing_dir") else wpath.parent
+            need = {"V1": "stain_ref.json", "V2": "stain_ref.json", "V3": "h_stats.json"}[self.variant]
+            f = pdir / need
+            if not f.is_file():
+                raise FileNotFoundError(f"variant {self.variant} needs {need}, not found in {pdir} "
+                                        "(no silent fallback: copy the training run's preprocessing file there)")
+            self.preprocessing_file = str(f)
+            if need == "stain_ref.json":
+                self.ref = json.loads(f.read_text())
+            else:
+                h = json.loads(f.read_text()); self.hstats = (float(h["mean"]), float(h["std"]))
+        else:
+            self.preprocessing_file = None
         self.device = device
         self.model = self.tinyseg.load(str(wpath), device, self.in_ch)
         self.bs = int(s["batch_size"])
@@ -64,12 +95,23 @@ class SegModel:
         if self.edge_mode == "reflect" and abs(self.margin - float(self.aug_v2.PAD)) > 1e-12:
             raise ValueError(f"crop.edge_mode reflect uses aug_v2.pipeline_crop, whose margin is fixed at "
                              f"aug_v2.PAD={self.aug_v2.PAD}; crop.margin is {self.margin}")
-        log.info("seg model %s: in_ch=%d size=%d device=%s", wpath, self.in_ch, self.size, device)
+        log.info("seg model %s: variant=%s in_ch=%d size=%d device=%s%s", wpath, self.variant, self.in_ch, self.size, device,
+                 f" preprocessing={self.preprocessing_file}" if self.preprocessing_file else "")
 
     def make_input(self, crop, box):
-        """One crop (BGR uint8) + detector box in crop coords -> float32 HxWxC network input."""
+        """One crop (BGR uint8) + detector box in crop coords -> float32 HxWxC network input.
+        V1/V2: Macenko (+ LAB-CLAHE) with the training reference, per crop; Macenko's fallback (crop left unchanged
+        when < 200 stained pixels or a degenerate fit) is the training rule itself and is counted in self.fallbacks.
+        V3: + haematoxylin channel standardised with the training mean/std. Same code as training/evaluation."""
+        if self.variant in ("V1", "V2"):
+            crop, ok = self.pp.transform_source(self.variant, crop, self.ref)
+            self.fallbacks += (not ok)
         x = self.tinyseg.to_input(crop, self.size)
-        if self.in_ch == 4:
+        if self.variant == "V3":
+            import cv2
+            hs = self.pp.h_channel(cv2.resize(crop, (self.size, self.size), interpolation=cv2.INTER_AREA))
+            x = np.concatenate([x, ((hs - self.hstats[0]) / self.hstats[1])[..., None]], -1)
+        elif self.variant == "box":
             x = np.concatenate([x, _box_channel(crop.shape[:2], box, self.size)], -1)
         return x
 

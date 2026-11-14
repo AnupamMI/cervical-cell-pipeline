@@ -102,6 +102,7 @@ def test_resume_overwrite_and_config_guard(inputs, tmp_path):
     c["detector"]["conf"] = 0.3
     c["detector"]["weights"] = str(ROOT / c["detector"]["weights"])
     c["seg"]["weights"] = str(ROOT / c["seg"]["weights"]); c["seg"]["code_dir"] = str(ROOT / c["seg"]["code_dir"])
+    c["seg"]["preprocess_code"] = str(ROOT / c["seg"]["preprocess_code"])
     c["detector_b"]["weights"] = str(ROOT / c["detector_b"]["weights"])
     alt = tmp_path / "alt.yaml"; alt.write_text(yaml.safe_dump(c))
     with pytest.raises(RunError, match="different config"):
@@ -206,36 +207,38 @@ def test_crop_clamped_vs_cell_at_edge(cfg, mode):
     assert cl.shape == (H, W)
 
 
-def test_containment_and_overlap_drop_in_process_fov(cfg, caplog):
+def test_containment_and_two_layer_overlaps_in_process_fov(cfg, caplog):
+    """v3: containment still drops near-duplicates (Stage 2), but no cell is dropped for overlap: the heavily overlapped
+    cell keeps its FULL mask for measurement, appears in the exclusive map only where it wins, and goes to review."""
     import copy, logging
     from ncmask.fov import process_fov
     c = copy.deepcopy(cfg)
-    # the bare rules: containment without the area-ratio guard, 16 px clip tolerance (geometry below assumes both)
     c["detector"]["containment_min_area_ratio"] = 0.0
     c["postprocess"]["clip_tolerance_px"] = 16
     img = np.full((600, 800, 3), 230, np.uint8)
     boxes = [[100, 100, 300, 300],    # 1 conf .9
-             [150, 150, 330, 330],    # .8: 69% inside box 1 -> survives containment; its cell then loses ~74% -> dropped
+             [150, 150, 330, 330],    # .8: 69% inside box 1 -> survives containment; its cell overlaps cell 1 by ~74%
              [120, 120, 200, 200],    # .7: fully inside box 1 -> dropped by containment (before seg)
-             [500, 100, 700, 300],    # .6: far away, kept
-             [690, 250, 790, 350]]    # .5: 10% inside box 4 -> kept; overlaps cell 4 a little
+             [500, 100, 700, 300],    # .6: far away
+             [690, 250, 790, 350]]    # .5: overlaps cell 4 a little
     det = StubDetector(boxes, [0.9, 0.8, 0.7, 0.6, 0.5])
     with caplog.at_level(logging.INFO, logger="ncmask.fov"):
         rows, coco, cl, nl, ov, info = process_fov(img, "t", "t.png", det, BoxSeg(), c)
-    reasons = [(d["reason"], d["cell_id"], d["conf"]) for d in info["dropped"]]
-    assert ("contained", "", 0.7) in reasons
-    assert ("overlap_lost", 2, 0.8) in reasons and len(reasons) == 2
-    ids = sorted(r["cell_id"] for r in rows)
-    assert ids == [1, 3, 4]                       # ids assigned after containment; dropped cell 2 removed
-    assert not (cl == 2).any() and set(np.unique(cl)) == {0, 1, 3, 4}
-    assert len([a for a in coco["annotations"] if a["category_id"] == 2]) == 3
-    assert "overlap_lost" in flags(rows)[4] and "overlap_won" in flags(rows)[3]
-    log = caplog.text
-    assert "dropped contained box conf 0.700" in log and "dropped cell 2 conf 0.800" in log
-    # both rules can be switched off
-    c["detector"]["containment_thr"] = None; c["postprocess"]["drop_lost_frac"] = None
-    rows, *_ , info = process_fov(img, "t", "t.png", det, BoxSeg(), c)
-    assert len(rows) == 5 and info["dropped"] == []
+    assert [(d["reason"], d["conf"]) for d in info["dropped"]] == [("contained", 0.7)]     # Stage 2 only
+    by = {r["cell_id"]: r for r in rows}
+    assert sorted(by) == [1, 2, 3, 4]                                                      # nothing dropped for overlap
+    full2 = 212 * 212                                                                      # box 2 (180 px) + 16 px per side
+    assert by[2]["cell_area_px"] == full2 and by[2]["excl_cell_area_px"] < full2           # full vs exclusive layer
+    assert abs(by[2]["occluded_frac"] - (full2 - by[2]["excl_cell_area_px"]) / full2) < 1e-3 and by[2]["occluded_frac"] > 0.3
+    assert by[2]["status"] == "review" and "occluded" in by[2]["reasons"]
+    assert (cl == 2).any() and set(np.unique(cl)) == {0, 1, 2, 3, 4}
+    full_cells = [a for a in info_full(rows, coco, info) if a["category_id"] == 2]
+    assert len(full_cells) == 4 and {a["attributes"]["cell_id"]: a["area"] for a in full_cells}[2] == full2
+    assert "dropped contained box conf 0.700" in caplog.text
+
+
+def info_full(rows, coco, info):
+    return info["coco_full"]["annotations"]
 
 
 def test_containment_default_keeps_small_cells_on_big_ones(cfg):
