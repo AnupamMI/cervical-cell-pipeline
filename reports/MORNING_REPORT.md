@@ -1,4 +1,4 @@
-# Morning report — 2026-11-15 00:30
+# Morning report — 2026-11-15 00:35
 
 Overnight run started 2026-11-14 19:38:17; log: `tinyseg_v3/overnight.log`.
 
@@ -11,10 +11,10 @@ Overnight run started 2026-11-14 19:38:17; log: `tinyseg_v3/overnight.log`.
 | step2_eval | ok |  | 2026-11-15 00:22:28 | 2026-11-15 00:27:01 |
 | step3_winner | ok |  | 2026-11-15 00:27:01 | 2026-11-15 00:27:04 |
 | step4_pipeline_v3 | ok |  | 2026-11-15 00:27:04 | 2026-11-15 00:28:30 |
-| step5_push_v02 | failed | steps/step5_push_v02.sh exit code 1 | 2026-11-15 00:28:30 | 2026-11-15 00:30:16 |
-| step6_morning_report | ok (this report) |  | 2026-11-15 00:30:16 |  |
+| step5_push_v02 | ok |  | 2026-11-15 00:33:06 | 2026-11-15 00:35:16 |
+| step6_morning_report | ok (this report) |  | 2026-11-15 00:35:26 | 2026-11-15 00:30:20 |
 
-**Failed / skipped:** step5_push_v02 (failed: steps/step5_push_v02.sh exit code 1)
+All steps succeeded.
 
 ## Training (V0–V3, 40 epochs, seed 42, from scratch, v2_1 recipe, no colour/blur/noise augmentation)
 
@@ -159,12 +159,14 @@ Step 4 log:
 ## Git
 
 ```
-14801ac (HEAD -> main, tag: v0.1, origin/main) check_against_samples: pooled Dice >= 0.99 per FOV + per-cell floor 0.95 (cross-device tolerance; CPU vs GPU measured)
+e78c375 (HEAD -> main, tag: v0.2, origin/main, v0.2-wip) v0.2: pipeline v3 (two layers, gate, image QC) + TinyUNet v3 V1
+6a76e13 reports: morning report 2026-11-15
+14801ac (tag: v0.1) check_against_samples: pooled Dice >= 0.99 per FOV + per-cell floor 0.95 (cross-device tolerance; CPU vs GPU measured)
 d9c586f samples: FOVs at samples/ top level so 'run.py --input samples/' works; docs/notebook updated
 20bd0fd (tag: v0.1-models) v0.1: cervical cell masking pipeline (YOLO26s + YOLO26l consensus_flag + TinyUNet v2_1)
 ```
 
-- tags on origin: v0.1, v0.1-models
+- tags on origin: v0.1, v0.1-models, v0.2
 - release with YOLO26l: https://github.com/AnupamMI/cervical-cell-pipeline/releases/tag/v0.1-models
 - v0.2 release (V0–V3 weights, if pushed): https://github.com/AnupamMI/cervical-cell-pipeline/releases/tag/v0.2-models
 - working tree: clean
@@ -175,7 +177,7 @@ d9c586f samples: FOVs at samples/ top level so 'run.py --input samples/' works; 
 2. Runtime → Change runtime type → **T4 GPU**.
 3. Key icon (Secrets) → add `GH_TOKEN` = a GitHub token with read access to the repo → enable notebook access.
 4. Runtime → Run all. It clones the repo, installs `requirements-colab.txt` (keeps Colab's torch), fetches the YOLO26l weights from the release, mounts Drive (outputs: `MyDrive/cervical-cell-pipeline/out/`), runs the pipeline on `samples/`, shows a 3-panel sheet and runs the match check (expect PASS).
-5. The repo's default branch is the latest version (`v0.1` tagged). To use exactly v0.1: `git checkout v0.1` in the clone.
+5. The repo's default branch is the latest version (`v0.2` tagged). To use exactly v0.1: `git checkout v0.1` in the clone.
 6. Your own FOVs: upload to Drive, then `!python run.py --input /content/drive/MyDrive/<your folder> --output /content/drive/MyDrive/cervical-cell-pipeline/out/<run>`.
 
 ## Open questions
