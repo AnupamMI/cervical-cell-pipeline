@@ -17,7 +17,7 @@ It produces masks only, with no N:C ratio or classification. Version **v0.1** = 
 Open `notebooks/colab_quickstart.ipynb` in Colab and set a Colab Secret `GH_TOKEN` (a GitHub token with read access
 to this private repo). The notebook clones the repo, installs `requirements-colab.txt` (keeps Colab's torch), fetches
 the YOLO26l weights from the release, mounts Google Drive (outputs in `MyDrive/cervical-cell-pipeline/out/`), runs
-the pipeline on `samples/fovs` with CUDA, shows a 3-panel sheet and checks the outputs against `samples/expected`.
+the pipeline on `samples` with CUDA, shows a 3-panel sheet and checks the outputs against `samples/expected`.
 
 ### Locally
 ```bash
@@ -27,7 +27,7 @@ python3 -m venv venv && . venv/bin/activate
 # x86 + CUDA:  install torch/torchvision for your CUDA, then    pip install -r requirements-colab.txt
 # CPU only:    see requirements-cpu.txt
 GH_TOKEN=<token> python scripts/fetch_release_weights.py      # optional: YOLO26l for the consensus tag
-python run.py --input samples/fovs --output out/
+python run.py --input samples --output out/
 python scripts/check_against_samples.py --output out/          # compare with the committed reference outputs
 ```
 The device is chosen automatically (CUDA if available, else CPU). All paths in `config.yaml` are relative to the
@@ -40,7 +40,7 @@ fetched by `scripts/fetch_release_weights.py` (token from the `GH_TOKEN` environ
 Sizes and SHA256s: [`models/WEIGHTS.md`](models/WEIGHTS.md).
 
 ### Samples
-`samples/fovs/`: 10 FOVs of slide MAX06 (cervical_0000-0009). `samples/expected/`: the outputs of this version on
+`samples/*.tiff`: 10 FOVs of slide MAX06 (cervical_0000-0009; the input folder is scanned non-recursively, so `samples/expected/` is never read as input). `samples/expected/`: the outputs of this version on
 the Jetson (cells.csv, label maps, COCO, overlays), the reference for `scripts/check_against_samples.py`.
 
 ### Tests
