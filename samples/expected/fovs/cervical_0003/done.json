@@ -1,0 +1,73 @@
+{
+ "fov": "cervical_0003",
+ "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs/cervical_0003.tiff",
+ "source_sha256": "2b8ea567712892d089f86f9e1edde2277204bacd7a9c9c256374a885ac0b0c5c",
+ "image": {
+  "src_dtype": "uint8",
+  "src_channels": 3,
+  "grey": false
+ },
+ "width": 2028,
+ "height": 1520,
+ "config_hash": "595250da78297490",
+ "finished_utc": "2026-11-14T14:09:48+00:00",
+ "detector": {
+  "tiled": false,
+  "n_raw": 32,
+  "n_after_nms": 32,
+  "b": {
+   "tiled": false,
+   "n_raw": 14,
+   "n_after_nms": 14,
+   "n_b": 14,
+   "consensus": 13,
+   "s_only": 19,
+   "l_only": 1
+  },
+  "n_contained_dropped": 1
+ },
+ "n_cells": 30,
+ "dropped": [
+  {
+   "reason": "contained",
+   "cell_id": "",
+   "conf": 0.17521,
+   "box": [
+    768.26,
+    771.68,
+    933.32,
+    963.44
+   ],
+   "detail": "1.00 of its area inside a higher-confidence box"
+  },
+  {
+   "reason": "overlap_lost",
+   "cell_id": 30,
+   "conf": 0.16382,
+   "box": [
+    758.68,
+    762.88,
+    1010.7,
+    1051.03
+   ],
+   "detail": "lost 0.87 of its pixels to higher-confidence cells"
+  }
+ ],
+ "l_only": [
+  {
+   "fov": "cervical_0003",
+   "b_conf": 0.35625,
+   "box_x1": 1.9,
+   "box_y1": 319.06,
+   "box_x2": 464.98,
+   "box_y2": 627.54,
+   "max_iou_with_A": 0.0664
+  }
+ ],
+ "detection_mode": "consensus_flag",
+ "n_dropped_overlap": 1,
+ "t_detect_s": 0.2516,
+ "t_seg_s": 0.392,
+ "t_total_s": 1.2109,
+ "t_post_s": 0.3833
+}

@@ -1,0 +1,85 @@
+# nc_mask_pipeline configuration. Every path and tunable number lives here.
+# Relative paths are resolved against the folder holding THIS file.
+
+input:
+  extensions: [.jpg, .jpeg, .png, .tif, .tiff, .bmp]
+  recursive: false            # true = also scan sub-folders (the output folder may then not be inside the input)
+  sixteen_bit: cv2            # 16-bit -> 8-bit. cv2 = exactly cv2.imread(path), the training reader (OpenCV uses
+                              # round(x/257) for TIFF but x>>8 for PNG); scale = round(x/257) for every format;
+                              # max = scale by the image's own max (for 10/12-bit data stored in 16-bit files)
+
+device: auto                  # auto (cuda if available) | cuda | cpu
+seed: 0
+
+detector:
+  weights: models/detector/cell_yolo26s_v2_best.pt
+  imgsz: 640                  # training imgsz of this checkpoint (train_args.imgsz); 0 = read it from the checkpoint
+  conf: 0.15                  # was 0.25. On cervical_0001 two visibly missed cells are found at 0.15 (conf 0.240, 0.163)
+                              # and boxes rise 35 -> 38 (+8.6%); see reports/conf_sweep_cervical_0001.json
+  nms_iou: 0.7                # class-agnostic NMS after detection (and after merging tiles). 0.7 = train_args.iou
+  max_det: 300                # per image / per tile (train_args.max_det)
+  min_box_px: 16              # boxes with width or height below this are not segmented (flag box_too_small)
+  containment_thr: 0.8        # before seg: drop a box if >= this share of its area lies inside a higher-conf box
+                              # (null or 0 = off). Dropped boxes are logged and listed in dropped.csv
+  containment_min_area_ratio: 0.4   # only drop if the box is also >= this share of the containing box's area (keeps
+                                    # small cells lying on big ones; as run_nc). 0 = drop on containment alone
+  tiling:
+    # Measured on 40 MAX06 FOVs (2028x1520, 483 GT boxes, reports/detector_tiling.json): recall full-frame 0.981,
+    # tiled 1280/640 0.967, tiled 1024/512 0.843 (loses large cells). Full-frame is the default for 2028-px FOVs.
+    mode: off                 # off | on | auto (auto = tile when max(H, W) > trigger_factor * imgsz)
+    trigger_factor: 4.0       # with imgsz 640: auto tiles only FOVs larger than 2560 px
+    tile_px: 1280             # tile size in FOV pixels (each tile is then run at imgsz)
+    overlap_px: 640           # must exceed the largest cell; boxes touching an inner tile edge are dropped
+    edge_px: 2                # "touching an inner tile edge" tolerance
+
+consensus:
+  detection_mode: consensus_flag   # single = detector A only (B never loaded)
+                                   # consensus_flag = A and B both run; every A box is segmented and tagged
+                                   #   det_tag consensus (A box matched to a B box) or s_only (A only)
+                                   # consensus_filter = as consensus_flag, but s_only boxes are not segmented
+                                   #   (listed in dropped.csv, reason s_only_filtered)
+                                   # In both consensus modes B boxes without an A partner go to l_only.csv (never segmented)
+  match_iou: 0.5                   # A<->B one-to-one matching (Hungarian on IoU), match if IoU >= this.
+                                   # Matched cells keep A's box (crop margin / seg parity unchanged)
+
+detector_b:                        # cross-check detector, used only in the consensus modes
+  weights: models/detector_b/yolo26l_1280_best.pt   # YOLO26l trained at 1280 (release copy, sha256 703f3e71...)
+  imgsz: 1280
+  conf: 0.15
+  nms_iou: 0.7
+  max_det: 300
+
+crop:
+  margin: 0.17               # per side, fraction of max(box w, h). = aug_v2.PAD used to build the v2/v2_1 training and
+                              # eval crops. Measured on the 9,147 raw tinyseg crops: median 0.177 (IQR 0.150-0.197),
+                              # see reports/crop_margin.json
+  edge_mode: reflect          # reflect = mirror-pad outside the FOV exactly like the training/eval crops
+                              # (aug_v2.pipeline_crop; requires margin == aug_v2.PAD) | clamp = cut the crop at the FOV edge.
+                              # Either way, a crop window that extends past the FOV gets the info flag crop_clamped
+
+seg:
+  code_dir: vendor/tinyseg_retrain   # verbatim copies of tinyseg.py, aug_v2.py, data.py from tinyseg_retrain
+  weights: models/seg/v2_1/best.pt   # v2: models/seg/v2/best.pt (4-channel: RGB + detector-box mask)
+  model_config: null                 # null = config.json next to the weights ({"in_ch":..,"size":..});
+                                     # no config.json = 3-channel 160 px (v1), as in evaluate_v2.load_model
+  batch_size: 64
+  thr_nucleus: 0.5
+  thr_cell: 0.5
+
+postprocess:
+  clip_tolerance_px: margin   # cell mask is clipped to the detector box + this per side. margin = crop.margin * max(box w, h),
+                              # i.e. the crop window itself: no clipping inside the crop (neighbours are handled by the
+                              # centre-component choice + overlap resolution). A number = that many px (earlier default 16).
+                              # Any pixels a clip removes -> flag box_clipped and column clipped_frac
+  nucleus_min_component_px: 20  # nucleus blobs smaller than this don't count towards multi_nucleus
+  cell_at_edge_px: 2          # detector box within this many px of the FOV border -> flag cell_at_edge (real truncation)
+  drop_lost_frac: 0.5         # after overlap resolution: drop a cell that lost MORE than this share of its pixels to
+                              # higher-conf cells (null = keep all). Dropped cells are logged and listed in dropped.csv
+
+output:
+  overlay: true
+  overlay_max_side: 0         # 0 = full resolution; otherwise downscale the overlay PNG so its longer side is this
+  coco_polygon_epsilon_px: 0.0  # cv2.approxPolyDP epsilon for COCO polygons (0 = exact outline)
+
+logging:
+  level: INFO

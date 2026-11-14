@@ -1,0 +1,13 @@
+# Google Colab (T4, CUDA): everything EXCEPT torch / torchvision (use Colab's preinstalled CUDA build).
+#   pip install -r requirements-colab.txt
+ultralytics==8.4.183
+numpy==2.2.6
+opencv-python==5.0.0.93
+scikit-image==0.25.2
+scipy==1.15.3
+pandas==2.3.3
+pillow==12.3.0
+tifffile==2025.5.10
+PyYAML==6.0.3
+matplotlib==3.10.9
+pytest==9.2.0

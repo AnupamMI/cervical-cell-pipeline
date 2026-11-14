@@ -1,0 +1,165 @@
+{
+ "status": "finished",
+ "started_utc": "2026-11-14T14:09:34+00:00",
+ "input": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs",
+ "output": "/home/jetson/Downloads/cervical-cell-pipeline/samples/expected",
+ "config_hash": "595250da78297490",
+ "config": {
+  "input": {
+   "extensions": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".bmp"
+   ],
+   "recursive": false,
+   "sixteen_bit": "cv2"
+  },
+  "device": "auto",
+  "seed": 0,
+  "detector": {
+   "weights": "/home/jetson/Downloads/cervical-cell-pipeline/models/detector/cell_yolo26s_v2_best.pt",
+   "imgsz": 640,
+   "conf": 0.15,
+   "nms_iou": 0.7,
+   "max_det": 300,
+   "min_box_px": 16,
+   "containment_thr": 0.8,
+   "containment_min_area_ratio": 0.4,
+   "tiling": {
+    "mode": "off",
+    "trigger_factor": 4.0,
+    "tile_px": 1280,
+    "overlap_px": 640,
+    "edge_px": 2
+   }
+  },
+  "consensus": {
+   "detection_mode": "consensus_flag",
+   "match_iou": 0.5
+  },
+  "detector_b": {
+   "weights": "/home/jetson/Downloads/cervical-cell-pipeline/models/detector_b/yolo26l_1280_best.pt",
+   "imgsz": 1280,
+   "conf": 0.15,
+   "nms_iou": 0.7,
+   "max_det": 300
+  },
+  "crop": {
+   "margin": 0.17,
+   "edge_mode": "reflect"
+  },
+  "seg": {
+   "code_dir": "/home/jetson/Downloads/cervical-cell-pipeline/vendor/tinyseg_retrain",
+   "weights": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/best.pt",
+   "model_config": null,
+   "batch_size": 64,
+   "thr_nucleus": 0.5,
+   "thr_cell": 0.5
+  },
+  "postprocess": {
+   "clip_tolerance_px": "margin",
+   "nucleus_min_component_px": 20,
+   "cell_at_edge_px": 2,
+   "drop_lost_frac": 0.5
+  },
+  "output": {
+   "overlay": true,
+   "overlay_max_side": 0,
+   "coco_polygon_epsilon_px": 0.0
+  },
+  "logging": {
+   "level": "INFO"
+  },
+  "_config_path": "/home/jetson/Downloads/cervical-cell-pipeline/config.yaml"
+ },
+ "models": {
+  "detector": {
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/detector/cell_yolo26s_v2_best.pt",
+   "sha256": "e85d0419bd6dc984772039196546b10996ba784b88ca43ec2be47056380c1451",
+   "names": {
+    "0": "cell"
+   },
+   "imgsz": 640
+  },
+  "seg": {
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/best.pt",
+   "sha256": "ab16420ea57123d87e0380ce5f2971410a03d25d5d25f29be19c1fc1e062647b",
+   "model_config": "/home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/config.json",
+   "model_config_sha256": "ea2c3028638a8ef76629accd9f539f107a8c707d7a50176accab318a733d965f",
+   "in_ch": 3,
+   "size": 224
+  },
+  "seg_code": {
+   "aug_v2.py": "a10e9e923ed4c2954585ad63c0607ddedb897fd2bab8c73c95d9b9314f4f340f",
+   "data.py": "2d1ab4581d2adda7e1827539c3c984a97d265149f4406e978c33effd85e1f24f",
+   "tinyseg.py": "442f2195de63a015402320e94e6b46559cba12af906134025e8119a4d43c8f62"
+  },
+  "detector_b": {
+   "path": "/home/jetson/Downloads/cervical-cell-pipeline/models/detector_b/yolo26l_1280_best.pt",
+   "sha256": "703f3e716a5116b98d581497eed6bab62b49181577aeb2062f209cbb230fb72b",
+   "names": {
+    "0": "cell"
+   },
+   "imgsz": 1280
+  }
+ },
+ "versions": {
+  "python": "3.10.12",
+  "platform": "Linux-5.15.148-tegra-aarch64-with-glibc2.35",
+  "torch": "2.11.0",
+  "cuda_available": true,
+  "opencv": "5.0.0",
+  "numpy": "2.2.6",
+  "ultralytics": "8.4.183",
+  "scipy": "1.15.3",
+  "scikit_image": "0.25.2",
+  "cuda": "12.6",
+  "gpu": "Orin"
+ },
+ "device": "cuda",
+ "finished_utc": "2026-11-14T14:09:59+00:00",
+ "wall_time_s": 24.25,
+ "counts": {
+  "fovs_listed": 10,
+  "fovs_ok": 10,
+  "fovs_failed": 0,
+  "fovs_skipped_already_done": 0,
+  "cells_this_run": 302,
+  "cells_in_cells_csv": 302,
+  "ignored_files": 0,
+  "dropped_this_run": {
+   "contained": 4,
+   "overlap_lost": 14
+  },
+  "dropped_in_dropped_csv": 18,
+  "grayscale_fovs_this_run": 0,
+  "det_tags_this_run": {
+   "consensus": 141,
+   "s_only": 161
+  },
+  "l_only_this_run": 3,
+  "l_only_in_l_only_csv": 3
+ },
+ "flag_counts_this_run": {
+  "crop_clamped": 169,
+  "cell_at_edge": 138,
+  "overlap_won": 135,
+  "overlap_lost": 135,
+  "no_nucleus": 33,
+  "multi_nucleus": 32,
+  "(none)": 25,
+  "box_too_tight": 18
+ },
+ "time_per_fov": {
+  "mean_s": 1.967,
+  "median_s": 1.717,
+  "max_s": 5.0
+ },
+ "grayscale_fovs": [],
+ "failures": [],
+ "skipped_already_done": [],
+ "ignored_files": []
+}

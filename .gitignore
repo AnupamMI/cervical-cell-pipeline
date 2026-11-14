@@ -1,0 +1,25 @@
+# data, run outputs, caches, environments
+data/
+runs/
+outputs/
+out/
+cache/
+caches/
+.cache/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.part
+# large weights distributed as GitHub Release assets
+models/detector_b/*.pt
+# images: none except the committed samples and reports
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+!samples/**
+!reports/**

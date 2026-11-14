@@ -1,0 +1,47 @@
+2026-11-14 19:39:34,798 INFO    ncmask: nc_mask_pipeline: input=/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs output=/home/jetson/Downloads/cervical-cell-pipeline/samples/expected config=/home/jetson/Downloads/cervical-cell-pipeline/config.yaml (hash 595250da78297490)
+2026-11-14 19:39:34,799 INFO    ncmask: 10 FOV image(s) to consider
+2026-11-14 19:39:39,177 INFO    ncmask.segment: seg model /home/jetson/Downloads/cervical-cell-pipeline/models/seg/v2_1/best.pt: in_ch=3 size=224 device=cuda
+2026-11-14 19:39:39,177 INFO    ncmask: device=cuda  detector imgsz=640 conf=0.15 tiling=off  seg in_ch=3 size=224  crop margin=0.17 edge_mode=reflect
+2026-11-14 19:39:39,177 INFO    ncmask: detection_mode=consensus_flag  B=/home/jetson/Downloads/cervical-cell-pipeline/models/detector_b/yolo26l_1280_best.pt imgsz=1280 conf=0.15 match_iou=0.5
+2026-11-14 19:39:42,676 INFO    ncmask.fov: cervical_0000: dropped contained box conf 0.150 (100% inside a higher-conf box)
+2026-11-14 19:39:43,954 INFO    ncmask.fov: cervical_0000: dropped cell 21 conf 0.677 (lost 94% of its pixels to higher-conf cells)
+2026-11-14 19:39:43,954 INFO    ncmask.fov: cervical_0000: dropped cell 26 conf 0.528 (lost 97% of its pixels to higher-conf cells)
+2026-11-14 19:39:43,954 INFO    ncmask.fov: cervical_0000: dropped cell 29 conf 0.403 (lost 90% of its pixels to higher-conf cells)
+2026-11-14 19:39:43,954 INFO    ncmask.fov: cervical_0000: dropped cell 34 conf 0.242 (lost 77% of its pixels to higher-conf cells)
+2026-11-14 19:39:44,358 INFO    ncmask: [1/10] cervical_0000: 34 cells (full-frame), 5.00s
+2026-11-14 19:39:45,626 INFO    ncmask.fov: cervical_0001: dropped cell 33 conf 0.392 (lost 95% of its pixels to higher-conf cells)
+2026-11-14 19:39:45,626 INFO    ncmask.fov: cervical_0001: dropped cell 37 conf 0.196 (lost 70% of its pixels to higher-conf cells)
+2026-11-14 19:39:45,996 INFO    ncmask: [2/10] cervical_0001: 36 cells (full-frame), 1.64s
+2026-11-14 19:39:46,405 INFO    ncmask.fov: cervical_0002: dropped contained box conf 0.155 (99% inside a higher-conf box)
+2026-11-14 19:39:47,174 INFO    ncmask.fov: cervical_0002: dropped cell 22 conf 0.501 (lost 52% of its pixels to higher-conf cells)
+2026-11-14 19:39:47,516 INFO    ncmask: [3/10] cervical_0002: 26 cells (full-frame), 1.52s
+2026-11-14 19:39:47,823 INFO    ncmask.fov: cervical_0003: dropped contained box conf 0.175 (100% inside a higher-conf box)
+2026-11-14 19:39:48,647 INFO    ncmask.fov: cervical_0003: dropped cell 30 conf 0.164 (lost 87% of its pixels to higher-conf cells)
+2026-11-14 19:39:48,995 INFO    ncmask: [4/10] cervical_0003: 30 cells (full-frame), 1.48s
+2026-11-14 19:39:50,424 INFO    ncmask.fov: cervical_0004: dropped cell 16 conf 0.638 (lost 92% of its pixels to higher-conf cells)
+2026-11-14 19:39:50,783 INFO    ncmask: [5/10] cervical_0004: 31 cells (full-frame), 1.79s
+2026-11-14 19:39:52,201 INFO    ncmask.fov: cervical_0005: dropped cell 25 conf 0.597 (lost 88% of its pixels to higher-conf cells)
+2026-11-14 19:39:52,544 INFO    ncmask: [6/10] cervical_0005: 30 cells (full-frame), 1.76s
+2026-11-14 19:39:53,006 INFO    ncmask.fov: cervical_0006: dropped contained box conf 0.161 (100% inside a higher-conf box)
+2026-11-14 19:39:54,287 INFO    ncmask: [7/10] cervical_0006: 30 cells (full-frame), 1.74s
+2026-11-14 19:39:56,058 INFO    ncmask: [8/10] cervical_0007: 32 cells (full-frame), 1.77s
+2026-11-14 19:39:56,977 INFO    ncmask.fov: cervical_0008: dropped cell 21 conf 0.572 (lost 59% of its pixels to higher-conf cells)
+2026-11-14 19:39:57,343 INFO    ncmask: [9/10] cervical_0008: 26 cells (full-frame), 1.28s
+2026-11-14 19:39:58,686 INFO    ncmask.fov: cervical_0009: dropped cell 27 conf 0.305 (lost 98% of its pixels to higher-conf cells)
+2026-11-14 19:39:58,686 INFO    ncmask.fov: cervical_0009: dropped cell 28 conf 0.216 (lost 99% of its pixels to higher-conf cells)
+2026-11-14 19:39:58,686 INFO    ncmask.fov: cervical_0009: dropped cell 30 conf 0.165 (lost 64% of its pixels to higher-conf cells)
+2026-11-14 19:39:59,035 INFO    ncmask: [10/10] cervical_0009: 27 cells (full-frame), 1.69s
+2026-11-14 19:39:59,044 INFO    ncmask: ======================================================================
+2026-11-14 19:39:59,044 INFO    ncmask: SUMMARY  FOVs: 10 ok, 0 failed, 0 skipped (already done)  |  cells this run: 302  (cells.csv: 302)
+2026-11-14 19:39:59,045 INFO    ncmask:   flag crop_clamped        169
+2026-11-14 19:39:59,045 INFO    ncmask:   flag cell_at_edge        138
+2026-11-14 19:39:59,045 INFO    ncmask:   flag overlap_won         135
+2026-11-14 19:39:59,045 INFO    ncmask:   flag overlap_lost        135
+2026-11-14 19:39:59,045 INFO    ncmask:   flag no_nucleus           33
+2026-11-14 19:39:59,045 INFO    ncmask:   flag multi_nucleus        32
+2026-11-14 19:39:59,045 INFO    ncmask:   flag (none)               25
+2026-11-14 19:39:59,045 INFO    ncmask:   flag box_too_tight        18
+2026-11-14 19:39:59,045 INFO    ncmask:   detection_mode consensus_flag: s_only 161, consensus 141   l_only (B only, not segmented): 3 -> l_only.csv
+2026-11-14 19:39:59,045 INFO    ncmask:   dropped (overlap_lost)     14   -> dropped.csv
+2026-11-14 19:39:59,046 INFO    ncmask:   dropped (contained)      4   -> dropped.csv
+2026-11-14 19:39:59,046 INFO    ncmask:   time per FOV: mean 1.97s  median 1.72s  max 5.00s

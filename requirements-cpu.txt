@@ -1,0 +1,4 @@
+# CPU-only machines (x86_64 / arm64, no CUDA). Install torch from the CPU index first:
+#   pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-cpu.txt
+-r requirements-colab.txt

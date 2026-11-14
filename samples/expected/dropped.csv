@@ -1,0 +1,19 @@
+fov,reason,cell_id,conf,box_x1,box_y1,box_x2,box_y2,detail
+cervical_0000,contained,,0.15023,499.07,379.46,626.34,680.62,1.00 of its area inside a higher-confidence box
+cervical_0000,overlap_lost,21,0.67743,1274.87,1014.97,1533.47,1202.83,lost 0.94 of its pixels to higher-confidence cells
+cervical_0000,overlap_lost,26,0.52828,857.55,413.01,1190.34,764.42,lost 0.97 of its pixels to higher-confidence cells
+cervical_0000,overlap_lost,29,0.40317,560.86,610.7,830.73,919.7,lost 0.90 of its pixels to higher-confidence cells
+cervical_0000,overlap_lost,34,0.24199,1402.17,0.0,1811.8,63.65,lost 0.77 of its pixels to higher-confidence cells
+cervical_0001,overlap_lost,33,0.39212,1450.03,1028.72,1781.03,1236.01,lost 0.95 of its pixels to higher-confidence cells
+cervical_0001,overlap_lost,37,0.19622,1885.59,819.7,2028.0,1281.55,lost 0.70 of its pixels to higher-confidence cells
+cervical_0002,contained,,0.15508,1716.0,600.71,1896.18,1054.0,0.99 of its area inside a higher-confidence box
+cervical_0002,overlap_lost,22,0.5007,1694.27,0.0,1905.64,49.76,lost 0.52 of its pixels to higher-confidence cells
+cervical_0003,contained,,0.17521,768.26,771.68,933.32,963.44,1.00 of its area inside a higher-confidence box
+cervical_0003,overlap_lost,30,0.16382,758.68,762.88,1010.7,1051.03,lost 0.87 of its pixels to higher-confidence cells
+cervical_0004,overlap_lost,16,0.63836,1461.88,555.27,1635.56,753.61,lost 0.92 of its pixels to higher-confidence cells
+cervical_0005,overlap_lost,25,0.59688,1252.92,751.01,1370.24,991.78,lost 0.88 of its pixels to higher-confidence cells
+cervical_0006,contained,,0.16099,1020.82,232.25,1219.6,453.52,1.00 of its area inside a higher-confidence box
+cervical_0008,overlap_lost,21,0.5721,1416.36,340.55,1651.94,590.26,lost 0.59 of its pixels to higher-confidence cells
+cervical_0009,overlap_lost,27,0.30524,0.0,189.39,122.78,338.36,lost 0.98 of its pixels to higher-confidence cells
+cervical_0009,overlap_lost,28,0.21558,466.42,0.0,840.2,77.22,lost 0.99 of its pixels to higher-confidence cells
+cervical_0009,overlap_lost,30,0.16467,1209.83,510.52,1640.59,858.09,lost 0.64 of its pixels to higher-confidence cells

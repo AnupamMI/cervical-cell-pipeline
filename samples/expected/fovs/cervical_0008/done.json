@@ -1,0 +1,51 @@
+{
+ "fov": "cervical_0008",
+ "source": "/home/jetson/Downloads/cervical-cell-pipeline/samples/fovs/cervical_0008.tiff",
+ "source_sha256": "c7e896fedb3912f435a6bc77932e3b40a632ad1f7a6c9fad220f581343c47f3a",
+ "image": {
+  "src_dtype": "uint8",
+  "src_channels": 3,
+  "grey": false
+ },
+ "width": 2028,
+ "height": 1520,
+ "config_hash": "595250da78297490",
+ "finished_utc": "2026-11-14T14:09:57+00:00",
+ "detector": {
+  "tiled": false,
+  "n_raw": 27,
+  "n_after_nms": 27,
+  "b": {
+   "tiled": false,
+   "n_raw": 9,
+   "n_after_nms": 9,
+   "n_b": 9,
+   "consensus": 9,
+   "s_only": 18,
+   "l_only": 0
+  },
+  "n_contained_dropped": 0
+ },
+ "n_cells": 26,
+ "dropped": [
+  {
+   "reason": "overlap_lost",
+   "cell_id": 21,
+   "conf": 0.5721,
+   "box": [
+    1416.36,
+    340.55,
+    1651.94,
+    590.26
+   ],
+   "detail": "lost 0.59 of its pixels to higher-confidence cells"
+  }
+ ],
+ "l_only": [],
+ "detection_mode": "consensus_flag",
+ "n_dropped_overlap": 1,
+ "t_detect_s": 0.246,
+ "t_seg_s": 0.2821,
+ "t_total_s": 1.0088,
+ "t_post_s": 0.3046
+}
