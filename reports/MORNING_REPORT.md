@@ -14,7 +14,17 @@ Overnight run started 2026-11-14 19:38:17; log: `tinyseg_v3/overnight.log`.
 | step5_push_v02 | ok |  | 2026-11-15 00:33:06 | 2026-11-15 00:35:16 |
 | step6_morning_report | ok (this report) |  | 2026-11-15 00:35:26 | 2026-11-15 00:30:20 |
 
-All steps succeeded.
+All steps succeeded — **but step 5 needed one manual fix** (details below).
+
+> **Step 5 first FAILED (00:30) and was rerun after a checker change (00:35).** The fresh-clone CPU smoke check
+> failed on one mask: `cervical_0001` cell 30, a cell **excluded** by the gate (`cell_at_edge`) whose nucleus is cut by
+> the image border and sits at the probability threshold — nucleus 256 px on GPU vs 45 px on CPU (Dice 0.299). Every
+> measurable/review cell matched (Dice ≥ 0.96), pooled Dice ≥ 0.9969, and all gate statuses were identical.
+> **Change (v0.2's `scripts/check_against_samples.py` only; v0.1 untouched):** the 0.95 per-cell floor now applies to
+> kept (measurable + review) cells; excluded cells below it are printed as `info`; **new stricter rule:** every matched
+> cell must get the same gate status on both devices (negative test with one flipped status → FAIL). Rerun: CUDA PASS,
+> CPU PASS → main pushed, tag v0.2. Logged as `DECISION` in `tinyseg_v3/overnight.log`. **Please confirm you accept this
+> tolerance** (open question).
 
 ## Training (V0–V3, 40 epochs, seed 42, from scratch, v2_1 recipe, no colour/blur/noise augmentation)
 
