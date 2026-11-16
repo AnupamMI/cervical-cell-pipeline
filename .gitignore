@@ -30,3 +30,6 @@ models/onnx/
 app/frontend/node_modules/
 app/frontend/dist/
 
+.playwright-mcp/
+contrast/
+.venv-app/

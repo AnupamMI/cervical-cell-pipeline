@@ -1,0 +1,30 @@
+{
+  "name": "cervical-cell-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "@shadergradient/react": "2.4.20",
+    "camera-controls": "3.1.2",
+    "openseadragon": "6.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "three": "0.169.0",
+    "three-stdlib": "2.36.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "0.169.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "~5.9.2",
+    "vite": "8.3.8"
+  }
+}

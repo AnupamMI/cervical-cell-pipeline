@@ -1,0 +1,15 @@
+# Web app runtime (FOV demo, app/backend): ONNX Runtime on CPU, no torch / ultralytics.
+# The same pins are used in the Dockerfile (Hugging Face Space). Local dev: see README > Web app.
+# GPU: replace onnxruntime with onnxruntime-gpu (providers fall back to CPU automatically).
+numpy==2.2.6
+scipy==1.15.3
+scikit-image==0.25.2
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+PyYAML==6.0.3
+onnxruntime==1.32.0
+fastapi==0.163.1
+starlette==1.10.0
+pydantic==2.14.3
+uvicorn==0.54.0
+python-multipart==0.0.33
