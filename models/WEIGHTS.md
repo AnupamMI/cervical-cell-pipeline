@@ -1,6 +1,6 @@
 # Model weights and preprocessing files
 
-Configured segmenter (config.yaml `seg.weights`): `models/seg/V1_v3/best.pt` — winner **V1**.
+Configured segmenter (config.yaml `seg.weights`, v0.3): `models/seg/v2_1/best.pt` (seg.variant `auto`).
 
 YOLO26l (`models/detector_b/yolo26l_1280_best.pt`, 105,729,697 bytes, SHA256 `703f3e716a5116b98d581497eed6bab62b49181577aeb2062f209cbb230fb72b`) is a GitHub Release asset (`v0.1-models`): `scripts/fetch_release_weights.py`.
 

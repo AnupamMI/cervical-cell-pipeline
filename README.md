@@ -1,8 +1,9 @@
-# cervical-cell-pipeline (v0.2)
+# cervical-cell-pipeline (v0.3)
 
-Masking pipeline for Pap-smear cervical cytology FOVs (2028x1520, ~0.155 µm/px). **v0.2** = pipeline v3 with the
-TinyUNet v3 segmenter `models/seg/V1_v3/best.pt` (winner: **V1**). v0.1 (pipeline v1 + TinyUNet v2_1) stays available:
-`git checkout v0.1`.
+Masking pipeline for Pap-smear cervical cytology FOVs (2028x1520, ~0.155 µm/px). **v0.3** = pipeline v3 (two-layer
+masks, image QC, measurable/review/excluded gate) with the **TinyUNet v2_1** segmenter (`models/seg/v2_1/best.pt`,
+`seg.variant: auto`) as the default. The TinyUNet v3 V1 model (Macenko stain normalisation; the v0.2 default) stays
+available as a config option. Older versions: `git checkout v0.2` (V1 default), `git checkout v0.1` (pipeline v1).
 
 ## Architecture
 
@@ -21,36 +22,65 @@ outputs  cells.csv, cells_full.coco.json + cells.coco.json (exclusive), label ma
          l_only.csv, run_manifest.json (config, model + preprocessing SHA256s, versions)
 ```
 
-## Results summary
 
-## Winner
+## Segmenter: model choice and results
 
-**V1** — decided on T1 + T2 corrected+independent.
+Primary score = nucleus Dice with **YOLO26s detector boxes**, mean of T1 and T2 (corrected+independent); `[low, high]`
+= 95 % cluster-bootstrap CI over FOV groups. ms/cell = median per T2 crop on the Jetson AGX Orin (GPU, batch 1, incl.
+preprocessing); on the larger T1/T1b crops V1/V2 take 83–96 ms vs 27 ms for v2_1/V0.
 
-Primary = nucleus Dice with YOLO26s boxes, mean of the set means; CI = cluster bootstrap within each set.
+| model | input / training | primary | T1 (clean 212) | T1b (50 ZIP01) | T2 full (92) | T2 corr+indep (89) | N:C MAE T2 | ms/cell |
+|---|---|---|---|---|---|---|---|---|
+| **v2_1 (default)** | raw RGB, photometric aug | **0.932** [0.921, 0.941] | 0.939 [0.920, 0.950] | 0.930 (in-sample) | 0.926 [0.911, 0.938] | 0.925 [0.911, 0.938] | 0.0031 | 29 |
+| V1 (option) | Macenko, no photometric aug | 0.910 [0.895, 0.922] | 0.912 [0.892, 0.928] | 0.900 [0.849, 0.936] | 0.908 [0.887, 0.926] | 0.907 [0.886, 0.924] | 0.0037 | 64 |
+| V2 | Macenko + LAB-CLAHE, no aug | 0.908 [0.896, 0.919] | 0.906 [0.885, 0.923] | 0.905 [0.856, 0.936] | 0.911 [0.899, 0.923] | 0.910 [0.898, 0.923] | 0.0045 | 68 |
+| V3 | RGB + haematoxylin, no aug | 0.861 [0.835, 0.884] | 0.938 [0.923, 0.948] | 0.923 [0.877, 0.949] | 0.783 [0.735, 0.827] | 0.783 [0.735, 0.828] | 0.0104 | 33 |
+| V0 | raw RGB, no aug | 0.854 [0.831, 0.874] | 0.926 [0.905, 0.940] | 0.920 [0.876, 0.947] | 0.780 [0.737, 0.820] | 0.782 [0.740, 0.823] | 0.0100 | 29 |
 
-| model | primary | 95 % CI | T1 | T2 corr+indep | N:C MAE | cell Dice |
-|---|---|---|---|---|---|---|
-| V0 | 0.8538 | [0.8311, 0.8743] | 0.9257 [0.9058, 0.9401] | 0.7819 [0.7402, 0.8229] | 0.0055 | 0.9699 |
-| V1 | 0.9096 | [0.8952, 0.9222] | 0.9120 [0.8914, 0.9282] | 0.9072 [0.8862, 0.9244] | 0.0039 | 0.9707 |
-| V2 | 0.9084 | [0.8962, 0.9186] | 0.9063 [0.8845, 0.9233] | 0.9104 [0.8978, 0.9227] | 0.0046 | 0.9677 |
-| V3 | 0.8607 | [0.8351, 0.8842] | 0.9383 [0.9227, 0.9481] | 0.7830 [0.7351, 0.8280] | 0.0053 | 0.9719 |
-| v2_1 (old) | 0.9321 | [0.9212, 0.9406] | 0.9388 [0.9210, 0.9502] | 0.9255 [0.9105, 0.9377] | 0.0029 | 0.9741 |
+**Why v2_1 is the default (v0.3).** v2_1 has the highest score on every test set and the lowest N:C error, and it is
+2–3× faster than V1 (no Macenko step). In v0.2, V1 was installed by the pre-registered rule ("keep v2_1 only if the
+winner is *clearly* worse", i.e. non-overlapping CIs); the CIs overlapped by 0.001, so V1 shipped even though it was
+numerically worse everywhere. v0.3 reverses that by decision. Caveats: v2_1 was trained on the old tinyseg_retrain split, not the
+leak-free v3 split: T1 (the clean 212) was its test set, but 15 of those crops have a same-cell twin (another FOV of
+the same physical cell) in its train/val, so its T1 score may be slightly optimistic; and it
+is in-sample on T1b (38 of the 50 ZIP01 cells are in its train/val), so T1b is shown but never used to rank it.
+NC003 has no overlap with its training data, so its T2 score has no such issue.
 
-Reasoning:
+**Finding: the segmenter needs photometric augmentation for cross-slide robustness.** Without colour/blur/noise
+augmentation, raw-RGB TinyUNet (V0) drops from 0.926 on T1 to **0.78 on T2** (another slide batch, NC003), while
+v2_1 (same architecture and input, trained *with* `aug_v2.photometric`) holds **0.93** on T2. Stain normalisation
+(V1/V2) recovers most of the T2 gap (0.91) but costs ~0.02 on T1 and 35–60 ms/cell. V4 (V0 recipe on the leak-free split
+with photometric augmentation fully on) is the follow-up experiment: `reports/RESULTS_V4.md` once available.
 
-- V1 beats V0: primary 0.9096 [0.8952, 0.9222] vs V0 0.8538 [0.8311, 0.8743], no overlap.
-- V1 is not clearly worse than the old v2_1 on T1 or T2 (CIs overlap or V1 is higher).
+**T2 caveat: its outlines are NCNet-derived.** The 92 NC003 cells were annotated in CVAT starting from NCNet's
+predictions: vs NCNet's saved masks, **89 corrected, 3 identical, 0 independent**, and the median share of polygon
+vertices lying exactly on NCNet's boundary is 94.5 % (cell) / 100 % (nucleus) vs ~28 % / 36 % for hand-drawn ZIP01
+outlines (`training/tinyseg_v3/T2_VERIFY_REPORT.md`). T2 therefore measures **agreement with corrected NCNet outlines
+plus domain shift**, not accuracy against independent ground truth. T2 is crop-based (no source FOVs exist: pipeline
+crop = cell box + 0.17, mirror padding, on each annotated crop).
 
-Full tables (T1 clean 212, T1b 50 ZIP01, T2 92 NC003 crop-based; GT and YOLO26s boxes; 95 % CIs): `reports/RESULTS.md`.
-Production sheets: `reports/sheets_1fov/`, `reports/sheets_5fov/` (left YOLO26s boxes, middle masks, right status).
+**Use V1 instead:** in `config.yaml` set `seg.weights: models/seg/V1_v3/best.pt` and `seg.variant: V1` (its Macenko
+reference `stain_ref.json` sits next to the weights; the pipeline fails loudly if it is missing; Macenko fallbacks are
+counted in `run.log` / `run_manifest.json`).
+
+Full tables (GT and YOLO26s boxes, Dice/IoU/boundary F/N:C MAE with CIs, failure counts): `reports/RESULTS.md`.
+Production sheets for v0.3: `reports/sheets_v0.3_1fov/`, `reports/sheets_v0.3_5fov/` (left YOLO26s boxes, middle full
+masks, right status); v0.2 (V1) sheets: `reports/sheets_1fov/`, `reports/sheets_5fov/`.
+
+## Cross-device check
+
+`scripts/check_against_samples.py` compares a run with `samples/expected` (made on the Jetson GPU): same cell count,
+Hungarian box match (IoU ≥ 0.9), pooled mask Dice ≥ 0.99 per FOV and structure, **identical gate status for every
+matched cell**, and a per-cell Dice floor of 0.95 on measurable + review cells (excluded cells below it are reported as
+info only: e.g. an edge-cut nucleus at the probability threshold, 256 px GPU vs 45 px CPU).
 
 ## Retrain TinyUNet v3
 
 `training/tinyseg_v3/`: `make_split.py` (leak-free split: same-cell-merged FOV groups; name lists in `splits/`),
-`build_cache.py` (Macenko reference / H stats from train crops only), `train_v3.py --variant V0|V1|V2|V3 --epochs 40`
-(v2_1 recipe from scratch, no colour augmentation), `eval_final.py` (all test sets), `overnight.sh` (the unattended
-orchestration used for this release). The training images themselves are not in the repo (tinyseg_retrain data).
+`build_cache.py` (Macenko reference / H stats from train crops only), `train_v3.py --variant V0|V1|V2|V3 --epochs 40
+[--photometric]` (v2_1 recipe from scratch; `--photometric` turns `aug_v2.photometric` on, as for V4), `eval_final.py
+[--models V4,v2_1 --out DIR]` (all test sets), `overnight.sh` / `v4.sh` (the unattended orchestration). The training
+images themselves are not in the repo (tinyseg_retrain data).
 
 ## Quick start
 

@@ -163,8 +163,15 @@ def fmt(r, m, best_idx, i, digits=3):
 def main():
     global RES
     import argparse
+    global MODELS
     ap = argparse.ArgumentParser(); ap.add_argument("--smoke", default=None, help="test mode: output dir; V0 = current best.pt, 12 cells/set")
+    ap.add_argument("--models", default=None, help="comma list (default V0,V1,V2,V3,v2_1), e.g. V4,v2_1")
+    ap.add_argument("--out", default=None, help="results folder (default tinyseg_v3/results)")
     a = ap.parse_args()
+    if a.models:
+        MODELS = a.models.split(",")
+    if a.out:
+        RES = Path(a.out)
     if a.smoke:
         RES = Path(a.smoke)
     RES.mkdir(parents=True, exist_ok=True); (RES / "overlays").mkdir(exist_ok=True)
@@ -183,8 +190,8 @@ def main():
         models[v] = m
         log["models"][v] = {"dir": str(d), "params": int(sum(p.numel() for p in m.net.parameters())), "in_ch": m.in_ch,
                             "variant": m.variant}
-    if "V0" not in models:
-        sys.exit("V0 missing: cannot evaluate")
+    if MODELS[0] not in models:
+        sys.exit(f"{MODELS[0]} missing: cannot evaluate")
     data = {"T1": E.load_T1(), "T1b": E.load_T1b(), "T2": load_T2_crops()}
     if a.smoke:
         data = {k: v[:12] for k, v in data.items()}
@@ -263,7 +270,7 @@ def main():
     # overlays: 10 per set (5 random + the 5 lowest V0 nucleus Dice with detector boxes), detector protocol
     rng = np.random.default_rng(0)
     for ts, recs in data.items():
-        d0 = per[(per.set == ts) & (per.subset == "all") & (per.protocol == "det") & (per.model == "V0") & (per.status == "scored")]
+        d0 = per[(per.set == ts) & (per.subset == "all") & (per.protocol == "det") & (per.model == MODELS[0]) & (per.status == "scored")]
         worst = list(d0.sort_values("nuc_dice").name[:5])
         rest = [r["name"] for r in recs if r["name"] not in worst and (ts, r["name"]) in ov]
         pick = worst + list(rng.choice(rest, min(5, len(rest)), replace=False))
@@ -271,7 +278,7 @@ def main():
         by = {r["name"]: r for r in recs}
         for k, n in enumerate(pick, 1):
             if (ts, n) in ov:
-                cv2.imwrite(str(out / f"{k:02d}_{'worstV0' if n in worst else 'random'}_{Path(n).stem}.png"),
+                cv2.imwrite(str(out / f"{k:02d}_{'worst' + MODELS[0] if n in worst else 'random'}_{Path(n).stem}.png"),
                             overlay_row(by[n], ov[(ts, n)], list(models)))
     log["finished"] = time.strftime("%F %T")
     (RES / "eval.json").write_text(json.dumps(log, indent=1))

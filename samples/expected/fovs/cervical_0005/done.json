@@ -9,8 +9,8 @@
  },
  "width": 2028,
  "height": 1520,
- "config_hash": "572722eaee3021bb",
- "finished_utc": "2026-11-14T19:03:35+00:00",
+ "config_hash": "174f142f2d134197",
+ "finished_utc": "2026-11-16T04:10:37+00:00",
  "detector": {
   "tiled": false,
   "n_raw": 31,
@@ -38,13 +38,13 @@
   "stained_frac": 0.01019
  },
  "status_counts": {
-  "measurable": 10,
-  "review": 4,
+  "measurable": 11,
+  "review": 3,
   "excluded": 17
  },
  "n_dropped_overlap": 0,
- "t_detect_s": 0.3954,
- "t_seg_s": 1.6627,
- "t_total_s": 2.6574,
- "t_post_s": 0.3629
+ "t_detect_s": 0.3381,
+ "t_seg_s": 0.3034,
+ "t_total_s": 1.2713,
+ "t_post_s": 0.3903
 }

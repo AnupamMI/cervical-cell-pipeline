@@ -65,8 +65,8 @@ def preload(items, workers):
 
 
 class TrainSet(Dataset):
-    def __init__(self, items, seed, cache):
-        self.items, self.seed, self.epoch, self.cache = items, seed, 0, cache
+    def __init__(self, items, seed, cache, photometric=False):
+        self.items, self.seed, self.epoch, self.cache, self.photometric = items, seed, 0, cache, photometric
 
     def __len__(self):
         return len(self.items)
@@ -81,7 +81,9 @@ class TrainSet(Dataset):
                 img = aug_v2.paste_overlap(img, nuc, cell, simg, scell, rng)
         box = aug_v2.jitter_box(aug_v2.base_box(img, cell), rng)
         crop, lab, valid = aug_v2.make_sample(img, nuc, cell, box, SIZE)
-        crop, lab = aug_v2.geometric(crop, lab, rng)               # aug_v2.photometric deliberately skipped
+        crop, lab = aug_v2.geometric(crop, lab, rng)               # V0-V3: aug_v2.photometric deliberately skipped
+        if self.photometric:                                      # V4 (--photometric): exactly aug_v2.train_sample's order
+            crop = aug_v2.photometric(crop, rng)
         w = np.stack([aug_v2.edge_weight(lab[..., 0]), aug_v2.edge_weight(lab[..., 1])], -1)
         return crop, lab, valid, w
 
@@ -133,10 +135,11 @@ def main():
     ap.add_argument("--workers", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--limit", type=int, default=0, help="debug: only N train crops")
+    ap.add_argument("--photometric", action="store_true", help="V4: aug_v2.photometric ON (HSV, HED, gamma, CLAHE, grey, blur, noise)")
     a = ap.parse_args()
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     in_ch = 4 if a.variant == "V3" else 3
-    (out / "config.json").write_text(json.dumps({"in_ch": in_ch, "size": SIZE, "variant": a.variant}))
+    (out / "config.json").write_text(json.dumps({"in_ch": in_ch, "size": SIZE, "variant": a.variant, **({"photometric": True} if a.photometric else {})}))
     (out / "args.json").write_text(json.dumps(vars(a), indent=1))
     split = json.load(open(HERE / "split_v3.json"))
     tr, va = items_for(split["train"], a.variant), items_for(split["val"], a.variant)
@@ -161,7 +164,7 @@ def main():
         ref = aug_v2.load_item(tr[k])
         assert all((x is None and y is None) or np.array_equal(x, y) for x, y in zip(cache[k], ref))
     print(f"[{a.variant}] preloaded {len(cache)} crops in {time.time() - t2:.0f}s", flush=True)
-    ds = TrainSet(tr, a.seed, cache)
+    ds = TrainSet(tr, a.seed, cache, a.photometric)
     dl = DataLoader(ds, batch_size=a.bs, shuffle=True, num_workers=a.workers, collate_fn=make_collate(in_ch, hch),
                     drop_last=True, generator=torch.Generator().manual_seed(a.seed), persistent_workers=a.workers > 0,
                     worker_init_fn=lambda w: np.random.seed(a.seed + w))

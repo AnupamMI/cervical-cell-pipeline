@@ -59,10 +59,10 @@ crop:
 
 seg:
   code_dir: vendor/tinyseg_retrain   # verbatim copies of tinyseg.py, aug_v2.py, data.py from tinyseg_retrain
-  weights: models/seg/V1_v3/best.pt   # v2: models/seg/v2/best.pt (4-channel: RGB + detector-box mask)
+  weights: models/seg/v2_1/best.pt   # default v2_1 (models/seg/v2_1/best.pt, variant auto). Option: models/seg/V1_v3/best.pt with variant V1 (TinyUNet v3 Macenko; slower, see README); v2: models/seg/v2/best.pt (4-channel)
   model_config: null                 # null = config.json next to the weights ({"in_ch":..,"size":..,"variant":..});
                                      # no config.json = 3-channel 160 px (v1), as in evaluate_v2.load_model
-  variant: V1                      # auto = the model's config.json; otherwise V0|V1|V2|V3|box and it MUST match it
+  variant: auto                      # with V1_v3 use V1 (or auto). auto = the model's config.json; otherwise V0|V1|V2|V3|box and it MUST match it
   preprocess_code: vendor/tinyseg_v3/preprocess.py   # training preprocessing (Macenko, LAB-CLAHE, H channel), verbatim
   preprocessing_dir: null            # null = folder of the weights; must hold stain_ref.json (V1/V2) / h_stats.json (V3)
   batch_size: 64
