@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import torch
 
 log = logging.getLogger("ncmask.segment")
 
@@ -88,7 +87,8 @@ class SegModel:
         else:
             self.preprocessing_file = None
         self.device = device
-        self.model = self.tinyseg.load(str(wpath), device, self.in_ch)
+        self.weights = str(wpath)
+        self.model = self._load_model(str(wpath), device)
         self.bs = int(s["batch_size"])
         self.margin = float(cfg["crop"]["margin"])
         self.edge_mode = cfg["crop"]["edge_mode"]
@@ -115,13 +115,21 @@ class SegModel:
             x = np.concatenate([x, _box_channel(crop.shape[:2], box, self.size)], -1)
         return x
 
-    @torch.no_grad()
+    def _load_model(self, path, device):
+        """PyTorch TinyUNet (tinyseg.load). Backends without torch (ncmask.onnx_backend) override this and _forward."""
+        return self.tinyseg.load(path, device, self.in_ch)
+
+    def _forward(self, x):
+        """x: float32 NCHW numpy batch -> sigmoid probabilities (N, 2, size, size) numpy."""
+        import torch
+        with torch.no_grad():
+            return torch.sigmoid(self.model(torch.from_numpy(x).to(self.device))).cpu().numpy()
+
     def predict(self, crops, boxes):
         """crops: list of BGR uint8 arrays; boxes: detector box per crop in crop coords -> (N, 2, size, size)
         sigmoid probabilities (channel 0 nucleus, 1 cell)."""
         outs = []
         for b in range(0, len(crops), self.bs):
             xs = [self.make_input(c, bx) for c, bx in zip(crops[b:b + self.bs], boxes[b:b + self.bs])]
-            x = torch.from_numpy(np.stack(xs).transpose(0, 3, 1, 2).astype(np.float32).copy())
-            outs.append(torch.sigmoid(self.model(x.to(self.device))).cpu().numpy())
+            outs.append(self._forward(np.stack(xs).transpose(0, 3, 1, 2).astype(np.float32).copy()))
         return np.concatenate(outs) if outs else np.zeros((0, 2, self.size, self.size), np.float32)

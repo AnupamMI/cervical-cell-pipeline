@@ -23,3 +23,10 @@ models/detector_b/*.pt
 *.bmp
 !samples/**
 !reports/**
+
+# ONNX bundle (scripts/export_onnx.py); shipped to the HF Space via git LFS, not to GitHub
+models/onnx/
+# web app
+app/frontend/node_modules/
+app/frontend/dist/
+

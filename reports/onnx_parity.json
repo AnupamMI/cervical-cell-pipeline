@@ -1,0 +1,396 @@
+{
+ "bundle_models": {
+  "detector": {
+   "source": "models/detector/cell_yolo26s_v2_best.pt",
+   "onnx_sha256": "85489368dc414dc8dbdb0531cab7422773535b4eed47f5c8dd24845661f83232"
+  },
+  "detector_b": {
+   "source": "models/detector_b/yolo26l_1280_best.pt",
+   "onnx_sha256": "6dba5926a134deb40d9915e441e16a432da51a81673b8a84ca16471536524cc0"
+  },
+  "seg": {
+   "source": "models/seg/v2_1/best.pt",
+   "onnx_sha256": "9ad54adb90384ee3754ebf4efb9524cf5625e6866f8a90c97dac463a3e6c8799"
+  }
+ },
+ "detection_mode": "consensus_flag",
+ "thresholds": {
+  "box_iou": 0.99,
+  "dice_fov": 0.999,
+  "dice_cell": 0.999,
+  "dice_nucleus_cell": 0.99
+ },
+ "fovs": [
+  {
+   "fov": "cervical_0000",
+   "fail": [],
+   "detector": {
+    "n_pt": 38,
+    "n_onnx": 38,
+    "min_iou": 0.999997
+   },
+   "detector_b": {
+    "n_pt": 16,
+    "n_onnx": 16,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 7.47,
+   "t_onnx_s": 7.91,
+   "cells": {
+    "n_pt": 38,
+    "n_onnx": 38
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 9,
+    "review": 11,
+    "excluded": 18
+   },
+   "status_onnx": {
+    "measurable": 9,
+    "review": 11,
+    "excluded": 18
+   }
+  },
+  {
+   "fov": "cervical_0001",
+   "fail": [],
+   "detector": {
+    "n_pt": 38,
+    "n_onnx": 38,
+    "min_iou": 0.999997
+   },
+   "detector_b": {
+    "n_pt": 19,
+    "n_onnx": 19,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 6.88,
+   "t_onnx_s": 4.61,
+   "cells": {
+    "n_pt": 38,
+    "n_onnx": 38
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 17,
+    "review": 6,
+    "excluded": 15
+   },
+   "status_onnx": {
+    "measurable": 17,
+    "review": 6,
+    "excluded": 15
+   }
+  },
+  {
+   "fov": "cervical_0002",
+   "fail": [],
+   "detector": {
+    "n_pt": 28,
+    "n_onnx": 28,
+    "min_iou": 0.999998
+   },
+   "detector_b": {
+    "n_pt": 15,
+    "n_onnx": 15,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.59,
+   "t_onnx_s": 3.42,
+   "cells": {
+    "n_pt": 27,
+    "n_onnx": 27
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 12,
+    "review": 1,
+    "excluded": 14
+   },
+   "status_onnx": {
+    "measurable": 12,
+    "review": 1,
+    "excluded": 14
+   }
+  },
+  {
+   "fov": "cervical_0003",
+   "fail": [],
+   "detector": {
+    "n_pt": 32,
+    "n_onnx": 32,
+    "min_iou": 0.999998
+   },
+   "detector_b": {
+    "n_pt": 14,
+    "n_onnx": 14,
+    "min_iou": 0.999998
+   },
+   "t_pt_s": 5.01,
+   "t_onnx_s": 4.31,
+   "cells": {
+    "n_pt": 31,
+    "n_onnx": 31
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 0.999995,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 12,
+    "review": 5,
+    "excluded": 14
+   },
+   "status_onnx": {
+    "measurable": 12,
+    "review": 5,
+    "excluded": 14
+   }
+  },
+  {
+   "fov": "cervical_0004",
+   "fail": [],
+   "detector": {
+    "n_pt": 32,
+    "n_onnx": 32,
+    "min_iou": 0.999996
+   },
+   "detector_b": {
+    "n_pt": 10,
+    "n_onnx": 10,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.88,
+   "t_onnx_s": 3.75,
+   "cells": {
+    "n_pt": 32,
+    "n_onnx": 32
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 17,
+    "review": 2,
+    "excluded": 13
+   },
+   "status_onnx": {
+    "measurable": 17,
+    "review": 2,
+    "excluded": 13
+   }
+  },
+  {
+   "fov": "cervical_0005",
+   "fail": [],
+   "detector": {
+    "n_pt": 31,
+    "n_onnx": 31,
+    "min_iou": 0.999998
+   },
+   "detector_b": {
+    "n_pt": 17,
+    "n_onnx": 17,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.96,
+   "t_onnx_s": 4.09,
+   "cells": {
+    "n_pt": 31,
+    "n_onnx": 31
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 11,
+    "review": 3,
+    "excluded": 17
+   },
+   "status_onnx": {
+    "measurable": 11,
+    "review": 3,
+    "excluded": 17
+   }
+  },
+  {
+   "fov": "cervical_0006",
+   "fail": [],
+   "detector": {
+    "n_pt": 31,
+    "n_onnx": 31,
+    "min_iou": 0.999999
+   },
+   "detector_b": {
+    "n_pt": 18,
+    "n_onnx": 18,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.64,
+   "t_onnx_s": 3.66,
+   "cells": {
+    "n_pt": 30,
+    "n_onnx": 30
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 14,
+    "review": 1,
+    "excluded": 15
+   },
+   "status_onnx": {
+    "measurable": 14,
+    "review": 1,
+    "excluded": 15
+   }
+  },
+  {
+   "fov": "cervical_0007",
+   "fail": [],
+   "detector": {
+    "n_pt": 32,
+    "n_onnx": 32,
+    "min_iou": 0.999996
+   },
+   "detector_b": {
+    "n_pt": 16,
+    "n_onnx": 16,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 5.04,
+   "t_onnx_s": 4.21,
+   "cells": {
+    "n_pt": 32,
+    "n_onnx": 32
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 16,
+    "review": 5,
+    "excluded": 11
+   },
+   "status_onnx": {
+    "measurable": 16,
+    "review": 5,
+    "excluded": 11
+   }
+  },
+  {
+   "fov": "cervical_0008",
+   "fail": [],
+   "detector": {
+    "n_pt": 27,
+    "n_onnx": 27,
+    "min_iou": 0.999997
+   },
+   "detector_b": {
+    "n_pt": 9,
+    "n_onnx": 9,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.6,
+   "t_onnx_s": 3.45,
+   "cells": {
+    "n_pt": 27,
+    "n_onnx": 27
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 0.999989,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 12,
+    "review": 3,
+    "excluded": 12
+   },
+   "status_onnx": {
+    "measurable": 12,
+    "review": 3,
+    "excluded": 12
+   }
+  },
+  {
+   "fov": "cervical_0009",
+   "fail": [],
+   "detector": {
+    "n_pt": 30,
+    "n_onnx": 30,
+    "min_iou": 0.999997
+   },
+   "detector_b": {
+    "n_pt": 15,
+    "n_onnx": 15,
+    "min_iou": 0.999999
+   },
+   "t_pt_s": 4.5,
+   "t_onnx_s": 4.08,
+   "cells": {
+    "n_pt": 30,
+    "n_onnx": 30
+   },
+   "dice_cell_fov": 1.0,
+   "dice_nuc_fov": 1.0,
+   "min_dice_cell": 1.0,
+   "min_dice_nucleus": 1.0,
+   "status_diff": [],
+   "reasons_diff": [],
+   "det_tag_diff": [],
+   "status_pt": {
+    "measurable": 10,
+    "review": 4,
+    "excluded": 16
+   },
+   "status_onnx": {
+    "measurable": 10,
+    "review": 4,
+    "excluded": 16
+   }
+  }
+ ],
+ "passed": true
+}
