@@ -46,7 +46,14 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
   }, [result.cells, sort])
   const body = useRef<HTMLTableSectionElement>(null)
   useEffect(() => {
-    body.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+    // keep the selected row visible by scrolling the table only (scrollIntoView would also scroll the panel/page)
+    const row = body.current?.querySelector<HTMLTableRowElement>('[aria-selected="true"]')
+    const wrap = row?.closest<HTMLElement>('.tablewrap')
+    if (!row || !wrap) return
+    const head = wrap.querySelector('thead')?.getBoundingClientRect().height ?? 0
+    const top = row.offsetTop - head, bottom = row.offsetTop + row.offsetHeight - wrap.clientHeight
+    if (wrap.scrollTop > top) wrap.scrollTop = top
+    else if (wrap.scrollTop < bottom) wrap.scrollTop = bottom
   }, [selected])
 
   const st = result.counts.status
@@ -73,6 +80,16 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
           </li>
         ))}
       </ul>
+
+      <section className="downloads" aria-labelledby="dl-h">
+        <h3 id="dl-h" className="panel__h">Downloads</h3>
+        <div className="downloads__row">
+          <a className="btn btn--sm" href={result.downloads['overlay.png']} download>Overlay PNG</a>
+          <a className="btn btn--sm" href={result.downloads['cells.csv']} download>cells.csv</a>
+          <a className="btn btn--sm" href={result.downloads['coco.json']} download>COCO</a>
+        </div>
+        <p className="muted small">Kept on the server until {new Date(result.expires_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, then deleted.</p>
+      </section>
 
       {qcIssues.length > 0 && (
         <div className="qc" role="note">
@@ -152,15 +169,6 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
         </div>
       </section>
 
-      <section className="downloads" aria-labelledby="dl-h">
-        <h3 id="dl-h" className="panel__h">Downloads</h3>
-        <div className="downloads__row">
-          <a className="btn btn--sm" href={result.downloads['overlay.png']} download>Overlay PNG</a>
-          <a className="btn btn--sm" href={result.downloads['cells.csv']} download>cells.csv</a>
-          <a className="btn btn--sm" href={result.downloads['coco.json']} download>COCO</a>
-        </div>
-        <p className="muted small">Kept on the server until {new Date(result.expires_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, then deleted.</p>
-      </section>
 
       <p className="timings muted small">
         detect {fmtMs(t.detect)}

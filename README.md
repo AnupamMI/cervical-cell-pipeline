@@ -5,6 +5,13 @@ masks, image QC, measurable/review/excluded gate) with the **TinyUNet v2_1** seg
 `seg.variant: auto`) as the default. The TinyUNet v3 V1 model (Macenko stain normalisation; the v0.2 default) stays
 available as a config option. Older versions: `git checkout v0.2` (V1 default), `git checkout v0.1` (pipeline v1).
 
+## Web app (FOV demo, branch `app-fov`)
+
+Browser demo for single FOVs: FastAPI + ONNX Runtime backend running this pipeline (`ncmask.fov.process_fov`) with
+ONNX exports of the three models (parity with PyTorch verified on all 10 samples), React frontend with an
+OpenSeadragon viewer. Run locally, API, deploy to a Hugging Face Space and the one-command segmenter swap:
+**[`app/README.md`](app/README.md)**.
+
 ## Architecture
 
 ```

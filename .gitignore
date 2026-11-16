@@ -33,3 +33,4 @@ app/frontend/dist/
 .playwright-mcp/
 contrast/
 .venv-app/
+app/frontend/*.tsbuildinfo
