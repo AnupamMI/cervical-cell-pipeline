@@ -1,0 +1,3 @@
+# shell scripts and the Dockerfile must keep LF on Windows checkouts (core.autocrlf)
+*.sh text eol=lf
+Dockerfile text eol=lf
