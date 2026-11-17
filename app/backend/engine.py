@@ -288,7 +288,8 @@ def to_json(res, img_shape, image_info, rid, expires_utc, consensus_requested, e
                      "near_frac": engine.health["models"].get("detector_c", {}).get("near_frac"),
                      "boxes": [{"id": c["cell_id"], "class": c["object"], "conf": c["conf"],
                                 "box": [c["box_x1"], c["box_y1"], c["box_x2"], c["box_y2"]]} for c in cb]},
-        "voting": {"used": res.get("vote_used", False), "detectors_run": info["voting"]["detectors_run"],
+        "voting": {"used": res.get("vote_used", False), "mode": info["voting"]["mode"],
+                   "detectors_run": info["voting"]["detectors_run"],
                    "votes_needed": info["voting"]["votes_needed"], "skip_in_cluster_debris":
                        bool(engine.cfg_on["voting"].get("skip_in_cluster_debris", True)),
                    "bc_only": sum(c["det_tag"] == "bc_only" for c in cells)},

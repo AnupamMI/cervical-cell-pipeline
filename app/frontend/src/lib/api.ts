@@ -39,7 +39,7 @@ export interface Result {
   image_qc: { ok: boolean; flags: string[]; metrics: Record<string, number> }
   consensus: { requested: boolean; used: boolean; l_only: number }
   clusters: { requested: boolean; used: boolean; info_only: true; conf: number | null; near_frac: number | null; boxes: CBox[] }
-  voting: { used: boolean; detectors_run: number; votes_needed: number | null; skip_in_cluster_debris: boolean; bc_only: number }
+  voting: { used: boolean; mode: 'cascade' | 'majority' | null; detectors_run: number; votes_needed: number | null; skip_in_cluster_debris: boolean; bc_only: number }
   cells: Cell[]
   counts: {
     total: number

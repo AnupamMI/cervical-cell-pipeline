@@ -6,9 +6,13 @@ nucleus within cell -> Stage 4 two layers: FULL per-cell masks (measurement, ove
 excluded + reasons) -> outputs.
 Optional: detector C (cluster / debris boxes, never segmented) -> per-cell near_cluster / near_debris (the C box ids
 covering >= detector_c.near_frac of the cell's detector box). Voting off: information only, computed after the gate.
-Voting on (cfg voting.enabled): a box is segmented only if >= min_votes of the detectors that ran (A YOLO26s, B YOLO26l,
-C's cell class) agree on it and it is not inside a cluster / debris box; the rest stay in the outputs as
-status not_segmented (reason not_voted / inside_cluster / inside_debris)."""
+Voting on (cfg voting.enabled), two modes:
+  cascade   YOLO26s (A) proposes -> detector C's cell class must confirm (else not_confirmed_c) -> YOLO26l (B) must
+            confirm (else not_confirmed_l) -> segmented. A is the only source; a check that did not run is skipped.
+  majority  >= min_votes of the detectors that ran (A, B, C's cell class) agree (else not_voted); B + C boxes that A
+            missed are candidates too (det_tag bc_only).
+Either way a confirmed cell >= near_frac inside a cluster / debris box is not segmented (inside_cluster /
+inside_debris); not segmented boxes stay in the outputs with status not_segmented."""
 import json
 import logging
 import time
@@ -236,11 +240,12 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
     vt = cfg.get("voting") or {}
     voting = bool(vt.get("enabled"))
     n_run = 1 + (mode != "single") + (detector_c is not None)
-    need = min(int(vt.get("min_votes", 2)), n_run)
+    vmode = vt.get("mode", "majority")
+    need = n_run if vmode == "cascade" else min(int(vt.get("min_votes", 2)), n_run)
     viou = float(vt.get("match_iou", 0.5))
     ac = match_boxes(boxes, c_cells, viou)[1] if detector_c is not None else np.zeros(len(boxes), bool)
     voters = np.array(["A" + ("B" if x else "") + ("C" if y else "") for x, y in zip(am, ac)], dtype=object)
-    if voting and mode != "single" and detector_c is not None and need <= 2:
+    if voting and vmode == "majority" and mode != "single" and detector_c is not None and need <= 2:
         # B + C agree on a cell YOLO26s missed: a majority without A -> a candidate with B's box and confidence
         free = np.where(~bm)[0]
         cfree = np.where(~match_boxes(boxes, c_cells, viou)[2])[0] if len(c_cells) else np.zeros(0, int)
@@ -284,9 +289,14 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
         if not cfg["size"]["box_area_min"] <= bw * bh <= cfg["size"]["box_area_max"]:
             rec["flags"].append("box_size_out_of_range")
         if voting:
-            if len(rec["voters"]) < need:
+            if vmode == "cascade":   # A -> C check -> B check
+                if detector_c is not None and "C" not in rec["voters"]:
+                    rec["skip"].append("not_confirmed_c")
+                elif mode != "single" and "B" not in rec["voters"]:
+                    rec["skip"].append("not_confirmed_l")
+            elif len(rec["voters"]) < need:
                 rec["skip"].append("not_voted")
-            elif vt.get("skip_in_cluster_debris", True):
+            if not rec["skip"] and vt.get("skip_in_cluster_debris", True):
                 rec["skip"] += ["inside_" + o for o in C_OBJECTS if rec["near"][o]]
             if rec["skip"]:
                 rows_pre.append((rec, None)); continue
@@ -416,7 +426,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
             "detector_c_used": detector_c is not None, "c_boxes": c_boxes,
             "fov_qc": qc_flags, "fov_qc_metrics": qc_metrics, "coco_full": coco_full,
             "status_counts": {k: sum(r["status"] == k for r in rows) for k in STATUSES},
-            "voting": {"enabled": voting, "detectors_run": n_run, "votes_needed": need if voting else None},
+            "voting": {"enabled": voting, "mode": vmode if voting else None, "detectors_run": n_run,
+                       "votes_needed": need if voting else None},
             "n_dropped_overlap": len(dropped_ov), "t_detect_s": round(t_det, 4), "t_seg_s": round(t_seg, 4),
             "t_total_s": round(time.perf_counter() - t0, 4), "t_post_s": round(t2 - t1 - t_seg, 4)}
     return rows, coco, cell_lab, nuc_lab, overlay, info

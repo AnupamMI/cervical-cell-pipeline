@@ -40,7 +40,7 @@ export function Toolbar({ layers, setLayers, opts, avail, setOpt, clustersShown,
           onChange={(v) => setOpt('consensus', v)} label="Consensus" />
         <Switch compact checked={opts.clusters && avail.clusters} disabled={!avail.clusters || busy}
           onChange={(v) => setOpt('clusters', v)} label="Clusters" />
-        <Switch compact checked={opts.vote} disabled={busy} onChange={(v) => setOpt('vote', v)} label="Vote" />
+        <Switch compact checked={opts.vote} disabled={busy} onChange={(v) => setOpt('vote', v)} label="Confirm" />
         <div className="zoom" role="group" aria-label="Zoom">
           <button type="button" className="iconbtn" onClick={() => onZoom(1 / 1.4)} aria-label="Zoom out">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9" /></svg>

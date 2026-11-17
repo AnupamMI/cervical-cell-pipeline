@@ -98,7 +98,7 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
             <div><dt>Cells near debris</dt><dd>{result.counts.near.debris}</dd></div>
           </dl>
           <p className="small muted">{result.voting.used
-            ? 'Clusters and debris are never segmented; cells inside them are skipped. Detector C is experimental (mAP50 ~0.5).'
+            ? 'Clusters and debris are never segmented; cells inside them are skipped. Detector C (experimental, mAP50 ~0.5) also confirms each cell.'
             : C_NOTE}</p>
         </section>
       )}

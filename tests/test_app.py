@@ -119,17 +119,22 @@ def test_infer_schema(result):
 
 
 def test_voting(result):
-    """Default vote=true: segmented only with >= 2 of 3 detectors and not inside a cluster / debris box."""
+    """Default vote=true, cascade: YOLO26s -> detector C confirms -> YOLO26l confirms -> segmented, unless inside a
+    cluster / debris box."""
     v = result["voting"]
-    assert v["used"] and v["detectors_run"] == 3 and v["votes_needed"] == 2
-    cl = {b["id"]: b for b in result["clusters"]["boxes"]}
+    assert v["used"] and v["mode"] == "cascade" and v["detectors_run"] == 3
     for c in result["cells"]:
+        assert "A" in c["voters"]
         if c["status"] == "not_segmented":
             assert c["cell_polygons"] == [] and c["cell_area_px"] == 0
-            assert c["reasons"] in (["not_voted"], ["inside_cluster"], ["inside_debris"], ["inside_cluster", "inside_debris"])
-            assert (c["reasons"] == ["not_voted"]) == (c["votes"] < 2)
+            if "C" not in c["voters"]:
+                assert c["reasons"] == ["not_confirmed_c"]
+            elif "B" not in c["voters"]:
+                assert c["reasons"] == ["not_confirmed_l"]
+            else:
+                assert c["reasons"] and set(c["reasons"]) <= {"inside_cluster", "inside_debris"}
         else:
-            assert c["votes"] >= 2 and not c["near_cluster"] and not c["near_debris"]
+            assert c["voters"] == "ABC" and not c["near_cluster"] and not c["near_debris"]
     assert result["counts"]["status"]["not_segmented"] > 0
     assert sum(result["counts"]["votes"].values()) == len(result["cells"])
 

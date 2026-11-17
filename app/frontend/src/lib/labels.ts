@@ -11,7 +11,7 @@ export const STATUS_HINT: Record<Status, string> = {
   measurable: 'Mask passed every check',
   review: 'Usable, but worth a look',
   excluded: 'Mask not usable for measurement',
-  not_segmented: 'Skipped by the vote: fewer than 2 detectors agree, or inside a cluster / debris box',
+  not_segmented: 'Not confirmed by detector C and YOLO26l, or inside a cluster / debris box',
 }
 
 // Gate reason codes (ncmask/quality.py) and image QC flags in plain words
@@ -34,6 +34,8 @@ export const REASON: Record<string, string> = {
   low_stain: 'Very little stained material',
   heavy_stain: 'Very heavy staining',
   not_voted: 'Fewer than 2 detectors agree',
+  not_confirmed_c: 'Not confirmed by detector C',
+  not_confirmed_l: 'Not confirmed by YOLO26l',
   inside_cluster: 'Inside a cluster',
   inside_debris: 'Inside debris',
 }

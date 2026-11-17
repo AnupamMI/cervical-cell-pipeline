@@ -218,8 +218,9 @@ def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tif
           consensus: bool = Query(True, description="run the YOLO26l consensus check (tag only, never filters)"),
           clusters: bool = Query(True, description="run detector C (cluster / debris boxes, never segmented; its "
                                                    "cell class is the third vote)"),
-          vote: bool = Query(True, description="segment only boxes at least 2 detectors agree on and that are not "
-                                               "inside a cluster / debris box; the rest are listed as not_segmented")):
+          vote: bool = Query(True, description="segment only YOLO26s boxes confirmed by detector C and then YOLO26l "
+                                               "(config voting.mode) and not inside a cluster / debris box; the rest "
+                                               "are listed as not_segmented")):
     if (file is None) == (sample is None):
         return err(400, "bad_request", "send exactly one of: a file, or a sample name")
     if file is not None and Path(file.filename or "").suffix.lower() not in EXTS:

@@ -65,6 +65,9 @@ detector_c:                        # "detector C": cluster / debris detector, IN
 voting:                            # which boxes get segmented. Off = every YOLO26s box (pipeline v3 behaviour, the
                                    # samples/expected references). The web app turns it on by default (vote=true)
   enabled: false
+  mode: cascade                    # cascade: YOLO26s proposes -> detector C must confirm -> YOLO26l must
+                                   # confirm -> segmented (a check that did not run is skipped).
+                                   # majority: >= min_votes of A / B / C agree; B+C-only cells added (bc_only)
   min_votes: 2                     # votes = detectors with a box at IoU >= match_iou: A (YOLO26s), B (YOLO26l),
                                    # C (detector C cell class). 2 = majority of 3. If fewer detectors ran (consensus or
                                    # detector C off), the requirement is min(min_votes, detectors that ran)

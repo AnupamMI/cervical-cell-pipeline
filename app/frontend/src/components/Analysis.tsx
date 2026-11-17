@@ -11,7 +11,7 @@ export const STAGES: Stage[] = [
   { key: 'detect', label: 'Detect', detail: 'YOLO26s finds the cells' },
   { key: 'consensus', label: 'Consensus', detail: 'YOLO26l cross-checks them' },
   { key: 'clusters', label: 'Clusters & debris', detail: 'Detector C outlines clusters and debris' },
-  { key: 'vote', label: 'Vote', detail: 'Keep cells at least 2 detectors agree on' },
+  { key: 'vote', label: 'Confirm', detail: 'Detector C, then YOLO26l, confirm each cell' },
   { key: 'segment', label: 'Segment', detail: 'TinyUNet outlines cell and nucleus' },
   { key: 'gate', label: 'Quality gate', detail: 'Each mask is sorted by status' },
 ]

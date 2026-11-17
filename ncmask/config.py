@@ -88,9 +88,9 @@ def load(path):
         dcc["class_conf"] = {**{c: float(dcc["conf"]) for c in dcc["classes"]}, "cell": float(dcc["cell_conf"])}
     v = cfg.setdefault("voting", {"enabled": False})
     v.setdefault("enabled", False); v.setdefault("min_votes", 2); v.setdefault("match_iou", 0.5)
-    v.setdefault("skip_in_cluster_debris", True)
-    if not isinstance(v["enabled"], bool) or v["min_votes"] not in (1, 2, 3) or not 0 < float(v["match_iou"]) <= 1:
-        raise ConfigError("voting: enabled true|false, min_votes 1|2|3, match_iou in (0, 1]")
+    v.setdefault("skip_in_cluster_debris", True); v.setdefault("mode", "cascade")
+    if not isinstance(v["enabled"], bool) or v["min_votes"] not in (1, 2, 3) or not 0 < float(v["match_iou"]) <= 1             or v["mode"] not in ("cascade", "majority"):
+        raise ConfigError("voting: enabled true|false, mode cascade|majority, min_votes 1|2|3, match_iou in (0, 1]")
     for sec, k in PATH_KEYS:
         if sec not in cfg:
             continue
