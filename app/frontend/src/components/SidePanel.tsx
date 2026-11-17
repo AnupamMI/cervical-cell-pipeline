@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Cell, Result, Status } from '../lib/api'
-import { DET_LABEL, STATUS_HINT, STATUS_LABEL, fmtMs, reason } from '../lib/labels'
-import { Glass } from './Glass'
+import { C_NOTE, DET_LABEL, STATUS_HINT, STATUS_LABEL, fmtMs, reason } from '../lib/labels'
 
 type Key = 'id' | 'status' | 'conf' | 'det_tag' | 'cell_area_px' | 'nc_ratio'
 const COLS: { key: Key; label: string; num?: boolean; title?: string }[] = [
@@ -46,7 +45,7 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
   }, [result.cells, sort])
   const body = useRef<HTMLTableSectionElement>(null)
   useEffect(() => {
-    // keep the selected row visible by scrolling the table only (scrollIntoView would also scroll the panel/page)
+    // keep the selected row visible by scrolling the table only (scrollIntoView would also scroll the page)
     const row = body.current?.querySelector<HTMLTableRowElement>('[aria-selected="true"]')
     const wrap = row?.closest<HTMLElement>('.tablewrap')
     if (!row || !wrap) return
@@ -61,74 +60,81 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
   const sel = result.cells.find((c) => c.id === selected)
   const qcIssues = [...result.image_qc.flags.map(reason), ...result.warnings]
   const t = result.timings_ms
+  const cl = result.clusters
+  const exp = new Date(result.expires_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <Glass as="aside" variant="text" radius={24} className="panel" aria-label="Results">
+    <aside className="panel card" aria-label="Results">
       <div className="panel__head">
         <div>
-          <p className="eyebrow">{result.source.sample ? `Sample ${result.source.sample}` : 'Your upload'}</p>
+          <p className="eyebrow">{result.source.sample ? `Sample ${result.source.sample}` : 'Your image'}</p>
           <h2 className="panel__title">{result.counts.total} cells</h2>
         </div>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onNew}>New image</button>
+        <button type="button" className="btn btn--quiet btn--sm" onClick={onNew}>New image</button>
       </div>
 
-      <ul className="counts" aria-label="Cells by status">
+      <ul className="stats" aria-label="Cells by status">
         {(['measurable', 'review', 'excluded'] as Status[]).map((s) => (
-          <li key={s} className={`count count--${s}`} title={STATUS_HINT[s]}>
-            <span className="count__n">{st[s] ?? 0}</span>
-            <StatusChip s={s} />
+          <li key={s} className={`stat stat--${s}`} title={STATUS_HINT[s]}>
+            <span className="stat__n">{st[s] ?? 0}</span>
+            <span className="stat__label"><span className="dot" aria-hidden="true" />{STATUS_LABEL[s]}</span>
           </li>
         ))}
       </ul>
 
-      <section className="downloads" aria-labelledby="dl-h">
-        <h3 id="dl-h" className="panel__h">Downloads</h3>
-        <div className="downloads__row">
-          <a className="btn btn--sm" href={result.downloads['overlay.png']} download>Overlay PNG</a>
-          <a className="btn btn--sm" href={result.downloads['cells.csv']} download>cells.csv</a>
-          <a className="btn btn--sm" href={result.downloads['coco.json']} download>COCO</a>
-        </div>
-        <p className="muted small">Kept on the server until {new Date(result.expires_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, then deleted.</p>
-      </section>
-
       {qcIssues.length > 0 && (
-        <div className="qc" role="note">
+        <div className="notice" role="note">
           <strong>Image check</strong>
           <ul>{qcIssues.map((q) => <li key={q}>{q}</li>)}</ul>
         </div>
       )}
 
+      {cl.used && (
+        <section className="group" aria-labelledby="c-h">
+          <h3 id="c-h" className="group__h">Clusters &amp; debris <span className="badge">Detector C</span></h3>
+          <dl className="kv">
+            <div><dt><span className="sw sw--cluster" aria-hidden="true" />Clusters</dt><dd>{result.counts.clusters.cluster}</dd></div>
+            <div><dt><span className="sw sw--debris" aria-hidden="true" />Debris</dt><dd>{result.counts.clusters.debris}</dd></div>
+            <div><dt>Cells near a cluster</dt><dd>{result.counts.near.cluster}</dd></div>
+            <div><dt>Cells near debris</dt><dd>{result.counts.near.debris}</dd></div>
+          </dl>
+          <p className="small muted">{C_NOTE}</p>
+        </section>
+      )}
+
       {reasons.length > 0 && (
-        <section className="reasons" aria-labelledby="reasons-h">
-          <h3 id="reasons-h" className="panel__h">Top reasons</h3>
-          <ul>
-            {reasons.map(([k, n]) => (
-              <li key={k}><span>{reason(k)}</span><span className="reasons__n">{n}</span></li>
-            ))}
-          </ul>
+        <section className="group" aria-labelledby="reasons-h">
+          <h3 id="reasons-h" className="group__h">Top reasons</h3>
+          <dl className="kv">
+            {reasons.map(([k, n]) => <div key={k}><dt>{reason(k)}</dt><dd>{n}</dd></div>)}
+          </dl>
         </section>
       )}
 
       {sel && (
-        <section className="selcell" aria-live="polite" aria-label={`Cell ${sel.id}`}>
+        <section className="group selcell" aria-live="polite" aria-label={`Cell ${sel.id}`}>
           <div className="selcell__top">
-            <h3 className="panel__h">Cell {sel.id}</h3>
+            <h3 className="group__h">Cell {sel.id}</h3>
             <StatusChip s={sel.status} />
           </div>
           {sel.reasons.length > 0 && <p className="selcell__why">{sel.reasons.map(reason).join(' · ')}</p>}
-          <dl className="selcell__dl">
+          <dl className="kv kv--grid">
             <div><dt>Confidence</dt><dd>{sel.conf.toFixed(3)}</dd></div>
             <div><dt>Detection</dt><dd>{DET_LABEL[sel.det_tag]}</dd></div>
             <div><dt>Cell area</dt><dd>{sel.cell_area_px.toLocaleString()} px</dd></div>
             <div><dt>Nucleus</dt><dd>{sel.nucleus_area_px.toLocaleString()} px</dd></div>
             <div><dt>N:C</dt><dd>{sel.nc_ratio == null ? '—' : sel.nc_ratio.toFixed(3)}</dd></div>
             <div><dt>Occluded</dt><dd>{Math.round(sel.occluded_frac * 100)}%</dd></div>
+            {cl.used && (sel.near_cluster.length > 0 || sel.near_debris.length > 0) && (
+              <div className="kv__wide"><dt>Detector C (info)</dt>
+                <dd>{[sel.near_cluster.length ? 'near a cluster' : '', sel.near_debris.length ? 'near debris' : ''].filter(Boolean).join(', ')}</dd></div>
+            )}
           </dl>
         </section>
       )}
 
-      <section className="cells" aria-labelledby="cells-h">
-        <h3 id="cells-h" className="panel__h">Cells <span className="muted">· select a row to zoom</span></h3>
+      <section className="group cells" aria-labelledby="cells-h">
+        <h3 id="cells-h" className="group__h">Cells <span className="muted">· select a row to zoom</span></h3>
         <div className="tablewrap" tabIndex={-1}>
           <table className="table">
             <thead>
@@ -138,7 +144,7 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
                     aria-sort={sort.key === c.key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (-s.dir as 1 | -1) : 1 }))}>
                       {c.label}
-                      <span className="sortmark" aria-hidden="true">{sort.key === c.key ? (sort.dir === 1 ? '▲' : '▼') : ''}</span>
+                      <span className="sortmark" aria-hidden="true">{sort.key === c.key ? (sort.dir === 1 ? '↑' : '↓') : ''}</span>
                     </button>
                   </th>
                 ))}
@@ -169,11 +175,21 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
         </div>
       </section>
 
+      <section className="group" aria-labelledby="dl-h">
+        <h3 id="dl-h" className="group__h">Downloads</h3>
+        <div className="downloads">
+          <a className="btn btn--quiet btn--sm" href={result.downloads['overlay.png']} download>Overlay PNG</a>
+          <a className="btn btn--quiet btn--sm" href={result.downloads['cells.csv']} download>cells.csv</a>
+          <a className="btn btn--quiet btn--sm" href={result.downloads['coco.json']} download>COCO JSON</a>
+        </div>
+        <p className="small muted">Kept until {exp}, then deleted.</p>
+      </section>
 
-      <p className="timings muted small">
-        detect {fmtMs(t.detect)}
-        {result.consensus.used ? ` · consensus ${fmtMs(t.consensus)}` : ''} · segment {fmtMs(t.segment)} · gate {fmtMs(t.gate)} · total {fmtMs(t.request)}
+      <p className="timings small muted">
+        Detect {fmtMs(t.detect)}
+        {result.consensus.used ? ` · consensus ${fmtMs(t.consensus)}` : ''}
+        {cl.used ? ` · clusters ${fmtMs(t.clusters)}` : ''} · segment {fmtMs(t.segment)} · gate {fmtMs(t.gate)} · total {fmtMs(t.request)}
       </p>
-    </Glass>
+    </aside>
   )
 }

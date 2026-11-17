@@ -16,8 +16,18 @@ export interface Cell {
   nucleus_area_px: number
   nc_ratio: number | null
   occluded_frac: number
+  near_cluster: string[]
+  near_debris: string[]
   cell_polygons: Pt[][]
   nucleus_polygons: Pt[][]
+}
+
+export type CKind = 'cluster' | 'debris'
+export interface CBox {
+  id: string
+  class: CKind
+  conf: number
+  box: [number, number, number, number]
 }
 
 export interface Result {
@@ -26,6 +36,7 @@ export interface Result {
   size: { width: number; height: number; expected: [number, number]; is_expected: boolean }
   image_qc: { ok: boolean; flags: string[]; metrics: Record<string, number> }
   consensus: { requested: boolean; used: boolean; l_only: number }
+  clusters: { requested: boolean; used: boolean; info_only: true; conf: number | null; near_frac: number | null; boxes: CBox[] }
   cells: Cell[]
   counts: {
     total: number
@@ -33,8 +44,10 @@ export interface Result {
     reasons: Record<string, number>
     det_tag: Record<string, number>
     dropped: Record<string, number>
+    clusters: Record<CKind, number>
+    near: Record<CKind, number>
   }
-  timings_ms: Record<'detect' | 'consensus' | 'segment' | 'gate' | 'total' | 'decode' | 'request', number>
+  timings_ms: Record<'detect' | 'consensus' | 'clusters' | 'segment' | 'gate' | 'total' | 'decode' | 'request', number>
   warnings: string[]
   downloads: Record<'overlay.png' | 'cells.csv' | 'coco.json' | 'image.jpg', string>
   source: { sample?: string; upload?: boolean }
@@ -51,6 +64,7 @@ export interface Health {
   status: 'ok' | 'warming_up'
   busy: boolean
   consensus_available: boolean
+  clusters_available: boolean
   max_upload_bytes: number
   typical_ms: null | Record<'consensus' | 'no_consensus', Record<string, number>>
   models: Record<string, { source: string; onnx_sha256: string; role: string }>
@@ -82,11 +96,16 @@ export const getSamples = () => fetch('/api/samples').then((r) => json<{ samples
 
 export type Source = { kind: 'file'; file: File } | { kind: 'sample'; name: string }
 
-export async function infer(src: Source, consensus: boolean, signal?: AbortSignal): Promise<Result> {
+export interface Options {
+  consensus: boolean
+  clusters: boolean
+}
+
+export async function infer(src: Source, o: Options, signal?: AbortSignal): Promise<Result> {
   const fd = new FormData()
   if (src.kind === 'file') fd.append('file', src.file)
   else fd.append('sample', src.name)
-  const r = await fetch(`/api/infer?consensus=${consensus}`, { method: 'POST', body: fd, signal })
+  const r = await fetch(`/api/infer?consensus=${o.consensus}&clusters=${o.clusters}`, { method: 'POST', body: fd, signal })
   return json<Result>(r)
 }
 

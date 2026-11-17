@@ -1,43 +1,57 @@
+import type { Options } from '../lib/api'
 import type { Layers } from './Viewer'
-import { Glass } from './Glass'
 import { Switch } from './Switch'
 
-const TOGGLES: { key: keyof Layers; label: string }[] = [
+const LAYERS: { key: keyof Layers; label: string }[] = [
   { key: 'detections', label: 'Detections' },
   { key: 'masks', label: 'Masks' },
-  { key: 'status', label: 'Status colours' },
+  { key: 'status', label: 'Status' },
+  { key: 'clusters', label: 'Clusters & debris' },
   { key: 'flaggedOnly', label: 'Flagged only' },
 ]
 
-export function Toolbar({ layers, setLayers, consensus, setConsensus, consensusAvailable, busy, onZoom, onHome }: {
+export function Toolbar({ layers, setLayers, opts, avail, setOpt, clustersShown, busy, onZoom, onHome }: {
   layers: Layers
   setLayers: (l: Layers) => void
-  consensus: boolean
-  setConsensus: (v: boolean) => void
-  consensusAvailable: boolean
+  opts: Options
+  avail: Options
+  setOpt: (k: keyof Options, v: boolean) => void
+  clustersShown: boolean
   busy: boolean
   onZoom: (f: number) => void
   onHome: () => void
 }) {
   return (
-    <Glass as="div" radius={999} className="toolbar" role="toolbar" aria-label="Viewer layers">
-      <div className="toolbar__group" role="group" aria-label="Layers">
-        {TOGGLES.map((t) => (
-          <button key={t.key} type="button" className="tbtn" aria-pressed={layers[t.key]}
-            onClick={() => setLayers({ ...layers, [t.key]: !layers[t.key] })}>
-            <span className="tbtn__box" aria-hidden="true" />{t.label}
+    <div className="toolbar">
+      <div className="segmented" role="group" aria-label="Layers">
+        {LAYERS.map((t) => {
+          const off = t.key === 'clusters' && !clustersShown
+          return (
+            <button key={t.key} type="button" className="segmented__btn" aria-pressed={layers[t.key] && !off}
+              disabled={off} title={off ? 'Turn on “Clusters” to run detector C' : undefined}
+              onClick={() => setLayers({ ...layers, [t.key]: !layers[t.key] })}>
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="toolbar__right">
+        <Switch compact checked={opts.consensus && avail.consensus} disabled={!avail.consensus || busy}
+          onChange={(v) => setOpt('consensus', v)} label="Consensus" />
+        <Switch compact checked={opts.clusters && avail.clusters} disabled={!avail.clusters || busy}
+          onChange={(v) => setOpt('clusters', v)} label="Clusters" />
+        <div className="zoom" role="group" aria-label="Zoom">
+          <button type="button" className="iconbtn" onClick={() => onZoom(1 / 1.4)} aria-label="Zoom out">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9" /></svg>
           </button>
-        ))}
+          <button type="button" className="iconbtn" onClick={() => onZoom(1.4)} aria-label="Zoom in">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9" /></svg>
+          </button>
+          <button type="button" className="iconbtn" onClick={onHome} aria-label="Fit image">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" /></svg>
+          </button>
+        </div>
       </div>
-      <span className="toolbar__sep" aria-hidden="true" />
-      <Switch compact checked={consensus && consensusAvailable} disabled={!consensusAvailable || busy}
-        onChange={setConsensus} label={busy ? 'Re-running…' : 'Consensus check (YOLO26l)'} />
-      <span className="toolbar__sep" aria-hidden="true" />
-      <div className="toolbar__group" role="group" aria-label="Zoom">
-        <button type="button" className="tbtn tbtn--icon" onClick={() => onZoom(1 / 1.4)} aria-label="Zoom out">−</button>
-        <button type="button" className="tbtn tbtn--icon" onClick={() => onZoom(1.4)} aria-label="Zoom in">+</button>
-        <button type="button" className="tbtn tbtn--icon" onClick={onHome} aria-label="Fit image">⤢</button>
-      </div>
-    </Glass>
+    </div>
   )
 }

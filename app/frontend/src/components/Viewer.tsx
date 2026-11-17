@@ -6,6 +6,7 @@ export interface Layers {
   detections: boolean
   masks: boolean
   status: boolean
+  clusters: boolean
   flaggedOnly: boolean
 }
 
@@ -68,7 +69,10 @@ const Viewer = forwardRef<ViewerHandle, {
       if (!item || !g.current) return
       const p0 = item.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0))
       const p1 = item.imageToViewerElementCoordinates(new OpenSeadragon.Point(W, 0))
-      g.current.setAttribute('transform', `translate(${p0.x} ${p0.y}) scale(${(p1.x - p0.x) / W})`)
+      const k = (p1.x - p0.x) / W
+      g.current.setAttribute('transform', `translate(${p0.x} ${p0.y}) scale(${k})`)
+      // labels keep a constant on-screen size: font-size in image units = px / scale
+      g.current.style.setProperty('--k', String(1 / k))
     }
     v.addHandler('open', () => {
       sync()
@@ -126,7 +130,7 @@ const Viewer = forwardRef<ViewerHandle, {
   return (
     <div className="viewer">
       <div ref={host} className="viewer__osd" role="application"
-        aria-label={`Field of view, ${W} by ${H} pixels, ${result.cells.length} cells. Drag to pan, scroll or +/- to zoom.`} />
+        aria-label={`Field of view, ${W} by ${H} pixels, ${result.cells.length} cells${result.clusters.used ? `, ${result.clusters.boxes.length} cluster or debris regions` : ''}. Drag to pan, scroll or +/- to zoom.`} />
       <svg className="viewer__overlay" aria-hidden="true">
         <g ref={g}>
           {layers.masks && (
@@ -144,6 +148,16 @@ const Viewer = forwardRef<ViewerHandle, {
               {shown.map((c) => (
                 <rect key={c.id} className={`det ${tone(c)} ${c.det_tag === 's_only' ? 'is-sonly' : ''}`}
                   x={c.box[0]} y={c.box[1]} width={c.box[2] - c.box[0]} height={c.box[3] - c.box[1]} />
+              ))}
+            </g>
+          )}
+          {layers.clusters && result.clusters.used && (
+            <g className="lyr-c">
+              {result.clusters.boxes.map((b) => (
+                <g key={b.id} className={`cbox cbox--${b.class}`}>
+                  <rect x={b.box[0]} y={b.box[1]} width={b.box[2] - b.box[0]} height={b.box[3] - b.box[1]} />
+                  <text x={b.box[0]} y={b.box[1]} dx="0.4em" dy="1.25em">{b.class === 'cluster' ? 'Cluster' : 'Debris'} {b.conf.toFixed(2)}</text>
+                </g>
               ))}
             </g>
           )}

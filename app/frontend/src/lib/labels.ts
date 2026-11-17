@@ -42,3 +42,6 @@ export const DET_LABEL: Record<string, string> = {
 }
 
 export const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`)
+
+export const C_LABEL: Record<'cluster' | 'debris', string> = { cluster: 'Cluster', debris: 'Debris' }
+export const C_NOTE = "Experimental: shown for information, doesn't change cell status."

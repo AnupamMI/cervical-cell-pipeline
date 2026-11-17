@@ -1,20 +1,17 @@
 import { useRef, useState } from 'react'
-import { ACCEPT, checkFile, type Sample } from '../lib/api'
-import { Glass } from './Glass'
+import { ACCEPT, checkFile, type Options, type Sample } from '../lib/api'
 import { Switch } from './Switch'
 
-export function Landing({
-  samples, samplesError, onFile, onSample, consensus, setConsensus, consensusAvailable, error, cellSlot,
-}: {
+export function Landing({ samples, samplesError, onFile, onSample, opts, avail, setOpt, error, busyRetry }: {
   samples: Sample[] | null
   samplesError: boolean
   onFile: (f: File) => void
   onSample: (name: string) => void
-  consensus: boolean
-  setConsensus: (v: boolean) => void
-  consensusAvailable: boolean
+  opts: Options
+  avail: Options
+  setOpt: (k: keyof Options, v: boolean) => void
   error: string | null
-  cellSlot: React.ReactNode
+  busyRetry: (() => void) | null
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [drag, setDrag] = useState(false)
@@ -30,57 +27,63 @@ export function Landing({
 
   return (
     <main id="main" className="landing">
-      <section className="landing__hero">
-        <p className="eyebrow">Pap-smear cytology · single field of view</p>
+      <div className="landing__intro">
         <h1 className="landing__title">Cervical Cell Pipeline</h1>
-        <p className="landing__subtitle">Research demo, not for diagnosis</p>
         <p className="landing__lede">
-          Upload one 2028&thinsp;×&thinsp;1520 FOV. YOLO26s finds the cells, YOLO26l cross-checks them, a TinyUNet
-          outlines each cell and its nucleus, and a quality gate marks every mask as measurable, review or excluded.
+          Upload one Pap-smear field of view to detect every cell, outline it and its nucleus, and see which
+          masks are measurable.
         </p>
+        <p className="landing__note">Research demo, not for diagnosis.</p>
+      </div>
 
-        <Glass as="section" variant="text" radius={26} className={`upload ${drag ? 'is-drag' : ''}`}
-          aria-labelledby="upload-h"
-          onDragOver={(e: React.DragEvent) => { e.preventDefault(); setDrag(true) }}
+      <section className="card upload" aria-labelledby="upload-h">
+        <div className={`drop ${drag ? 'is-drag' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
           onDragLeave={() => setDrag(false)}
-          onDrop={(e: React.DragEvent) => { e.preventDefault(); setDrag(false); take(e.dataTransfer.files[0]) }}>
-          <div className="upload__drop">
-            <svg className="upload__icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-            </svg>
-            <h2 id="upload-h" className="upload__h">Drop an FOV image here</h2>
-            <p className="upload__meta">TIFF, PNG or JPEG · up to 25 MB · deleted after 15 minutes</p>
-            <button type="button" className="btn btn--primary" onClick={() => input.current?.click()}>
-              Choose an image
-            </button>
-            <input ref={input} type="file" accept={ACCEPT} hidden
-              onChange={(e) => { take(e.target.files?.[0]); e.target.value = '' }} />
-          </div>
-          <div className="upload__opts">
-            <Switch checked={consensus && consensusAvailable} disabled={!consensusAvailable} onChange={setConsensus}
-              label="Consensus check (YOLO26l)"
-              hint={consensusAvailable ? 'Tags each cell as confirmed or YOLO26s-only. Never removes cells.' : 'Not available on this deployment.'} />
-          </div>
-          {msg && <p className="upload__error" role="alert">{msg}</p>}
-        </Glass>
-
-        <section className="samples" aria-labelledby="samples-h">
-          <h2 id="samples-h" className="samples__h">Try a sample</h2>
-          {samplesError && <p className="muted">Samples could not be loaded.</p>}
-          <div className="samples__row">
-            {samples === null && !samplesError &&
-              Array.from({ length: 4 }, (_, i) => <span key={i} className="sample sample--skeleton" aria-hidden="true" />)}
-            {samples?.slice(0, 4).map((s, i) => (
-              <button key={s.name} type="button" className="sample" onClick={() => onSample(s.name)}
-                aria-label={`Analyse sample ${i + 1} (${s.name})`}>
-                <img src={s.thumb} alt="" width={120} height={90} loading="lazy" decoding="async" />
-                <span>Sample {i + 1}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+          onDrop={(e) => { e.preventDefault(); setDrag(false); take(e.dataTransfer.files[0]) }}>
+          <svg className="drop__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+          </svg>
+          <h2 id="upload-h" className="drop__h">Drop an image here</h2>
+          <p className="drop__meta">TIFF, PNG or JPEG · 2028 × 1520 · up to 25 MB</p>
+          <button type="button" className="btn btn--primary" onClick={() => input.current?.click()}>Choose image</button>
+          <input ref={input} type="file" accept={ACCEPT} hidden aria-hidden="true" tabIndex={-1}
+            onChange={(e) => { take(e.target.files?.[0]); e.target.value = '' }} />
+        </div>
+        <div className="upload__opts">
+          <Switch checked={opts.consensus && avail.consensus} disabled={!avail.consensus}
+            onChange={(v) => setOpt('consensus', v)} label="Consensus check"
+            hint={avail.consensus ? 'YOLO26l confirms each cell. Never removes cells.' : 'Not available on this deployment.'} />
+          <Switch checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
+            onChange={(v) => setOpt('clusters', v)} label="Clusters & debris (detector C)"
+            hint={avail.clusters ? 'Experimental. Outlines only, never changes cell status.' : 'Not available on this deployment.'} />
+        </div>
+        {msg && <p className="error" role="alert">{msg}</p>}
+        {busyRetry && (
+          <p className="error error--busy" role="status">
+            <span>Another image is being analysed.</span>
+            <button type="button" className="btn btn--quiet btn--sm" onClick={busyRetry}>Retry</button>
+          </p>
+        )}
       </section>
-      <div className="landing__visual">{cellSlot}</div>
+
+      <section className="samples" aria-labelledby="samples-h">
+        <h2 id="samples-h" className="section-h">Or try a sample</h2>
+        {samplesError && <p className="muted">Samples could not be loaded.</p>}
+        <div className="samples__row">
+          {samples === null && !samplesError &&
+            Array.from({ length: 5 }, (_, i) => <span key={i} className="sample sample--skeleton" aria-hidden="true" />)}
+          {samples?.slice(0, 5).map((s, i) => (
+            <button key={s.name} type="button" className="sample" onClick={() => onSample(s.name)}
+              aria-label={`Analyse sample ${i + 1} (${s.name})`}>
+              <img src={s.thumb} alt="" width={160} height={120} decoding="async" />
+              <span>Sample {i + 1}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <p className="landing__foot muted small">Images are deleted after decoding; results after 15 minutes.</p>
     </main>
   )
 }
