@@ -39,12 +39,33 @@ browser (React + TS + Vite)                          FastAPI (app/backend, one u
   every YOLO26s box is segmented and tagged `consensus` / `s_only`; YOLO26l never removes a cell.
 - **Clusters off** = detector C never runs (`clusters=false`); on (default) it adds boxes and info tags only.
 
+### Voting: which cells get segmented (app default)
+
+With `vote=true` (the app's default; a "Vote" switch turns it off), a box is segmented only if **at least 2 of the
+3 detectors** have it (one-to-one match, IoU >= 0.5): A = YOLO26s, B = YOLO26l @1280, C = detector C's own `cell`
+class (conf >= 0.25; a vote only, never a box of its own). Cells YOLO26s missed but YOLO26l **and** C both found are
+candidates too (`det_tag` `bc_only`, YOLO26l's box). A voted cell with >= 50 % of its box inside a cluster or debris
+box is **not** segmented either. Cluster and debris boxes are independent detections and are never segmented.
+Everything that is not segmented stays visible: status **`not_segmented`**, reason `not_voted` / `inside_cluster` /
+`inside_debris`, its votes (`votes`, `voters` such as `AC`), no mask. If a detector is switched off, the requirement
+is min(2, detectors that ran): A + B or A + C must both agree; A alone segments everything.
+
+On the 10 samples (318 boxes): 275 segmented, 43 not segmented (29 found by one detector only, 14 inside a cluster /
+debris box), 2 `bc_only` cells added; measurable 130 -> 123. Agreement pattern of the segmented cells: A+B+C 135,
+A+C 138, A+B 1, B+C 1 (detector C's cell class confirms many YOLO26s cells that YOLO26l misses). With `vote=false`
+the app behaves exactly like pipeline v3 (every YOLO26s box segmented, C information only). The batch pipeline
+(`run.py`) keeps `voting.enabled: false` in `config.yaml` so its outputs still match the `samples/expected`
+references; set it to `true` to vote there too.
+
 ### Detector C (clusters & debris): what it does and doesn't do
 
 `models/detector_c/yolo26s_1024_ccd_best.pt` (SHA256 `a72ae657…df23255`, also in `models/WEIGHTS.md` and
 `/api/health`): YOLO26s trained at imgsz 1024 on classes `[cell, cluster, debris]`, 100 epochs (freeze 10, AdamW,
 cos_lr); classes and imgsz verified from the checkpoint. **Test mAP50: cell 0.829, cluster 0.503, debris 0.539**,
 with many background false positives at conf 0.25.
+
+Below: detector C with voting **off** (`vote=false`). With voting on, its cell class is the third vote and its
+cluster / debris boxes block segmentation (above).
 
 - **Does:** run full-frame on the FOV as decoded (the same image detectors A and B see; letterboxed to 1024, i.e.
   2028x1520 -> 1024x768), keep only its `cluster` and `debris` boxes with conf >= **0.5** (`detector_c.conf`), per-class
@@ -78,7 +99,7 @@ an export whose metadata says `end2end`; (2) the export has dynamic H/W so the r
 
 | method | path | |
 |---|---|---|
-| POST | `/api/infer?consensus=true\|false&clusters=true\|false` | both default true. multipart: `file` (.tif/.tiff/.png/.jpg/.jpeg, <= 25 MB) **or** `sample` (a name from `/api/samples`). Synchronous. |
+| POST | `/api/infer?consensus=true\|false&clusters=true\|false&vote=true\|false` | all default true. multipart: `file` (.tif/.tiff/.png/.jpg/.jpeg, <= 25 MB) **or** `sample` (a name from `/api/samples`). Synchronous. |
 | GET | `/api/infer/{id}/overlay.png` | full-resolution overlay (status-coloured boxes, outlines, nuclei) |
 | GET | `/api/infer/{id}/cells.csv` | the pipeline's `cells.csv` columns (+ `near_cluster`, `near_debris`, `object`); detector-C boxes as extra rows |
 | GET | `/api/infer/{id}/coco.json[?layer=full]` | COCO, exclusive (display) layer by default; `layer=full` = measurement layer (overlaps allowed) |
@@ -96,12 +117,14 @@ an export whose metadata says `end2end`; (2) the export has dynamic H/W so the r
   "consensus": {"requested": true, "used": true, "l_only": 1},
   "clusters": {"requested": true, "used": true, "info_only": true, "conf": 0.5, "near_frac": 0.5,
                "boxes": [{"id": "C1", "class": "cluster", "conf": 0.89, "box": [x1, y1, x2, y2]}, …]},
+  "voting": {"used": true, "detectors_run": 3, "votes_needed": 2, "skip_in_cluster_debris": true, "bc_only": 0},
   "cells": [{"id": 1, "box": [x1, y1, x2, y2], "conf": 0.9, "det_tag": "consensus", "b_conf": 0.88, "ab_iou": 0.93,
              "status": "review", "reasons": ["multi_nucleus"], "flags": ["multi_nucleus"],
              "cell_area_px": 63405, "nucleus_area_px": 1210, "nc_ratio": 0.0195, "occluded_frac": 0.0,
-             "near_cluster": ["C1"], "near_debris": [],
+             "votes": 3, "voters": "ABC", "near_cluster": [], "near_debris": [],
              "cell_polygons": [[[x, y], …]], "nucleus_polygons": [[[x, y], …]]}],
-  "counts": {"total": 38, "status": {"measurable": 9, "review": 11, "excluded": 18},
+  "counts": {"total": 38, "status": {"measurable": 6, "review": 6, "excluded": 13, "not_segmented": 13},
+             "votes": {"3/3": 14, "2/3": 16, "1/3": 8},
              "reasons": {"cell_at_edge": 17, …}, "det_tag": {…}, "dropped": {…},
              "clusters": {"cluster": 4, "debris": 9}, "near": {"cluster": 10, "debris": 0}},
   "timings_ms": {"detect": …, "consensus": …, "clusters": …, "segment": …, "gate": …, "total": …, "decode": …, "request": …},
@@ -115,7 +138,7 @@ exact outlines. `gate` time = everything except the models (QC, crops, post-proc
 polygons, overlay).
 
 Errors: `{"error": code, "detail": message}`. 400 `bad_request` / `unreadable_image`, 404 `not_found` / `expired`,
-413 `too_large`, 415 `unsupported_type`, 422 (invalid `consensus` / `clusters`), **503 `busy`** with `Retry-After: 5` when another
+413 `too_large`, 415 `unsupported_type`, 422 (invalid `consensus` / `clusters` / `vote`), **503 `busy`** with `Retry-After: 5` when another
 image is being analysed (one at a time; the UI shows "busy, retry"), 500 `internal_error`.
 
 **Privacy.** An upload is written to a private temp file only to decode it and is deleted immediately after. Results
@@ -135,13 +158,14 @@ together with their dependencies (`three`, `@react-three/*`, `@shadergradient/re
 - **Landing:** headline, one-line explanation, "Research demo, not for diagnosis." in small muted text, a drop zone,
   the two switches (Consensus check, Clusters & debris (detector C), both on by default), five sample thumbnails.
   The header + intro are static HTML in `index.html` (same markup React renders), so the first paint needs no JS.
-- **Analysis:** progress bar + the stage names (Detect, Consensus, Clusters & debris, Segment, Quality gate; stages
+- **Analysis:** progress bar + the stage names (Detect, Consensus, Clusters & debris, Vote, Segment, Quality gate; stages
   that are off are hidden). The call is synchronous, so the current stage is an estimate from the warm-up timings.
 - **Viewer:** the image fills its card edge to edge (4:3 on phones). A slim segmented control toggles layers
-  (Detections · Masks · Status · Clusters & debris · Flagged only); Consensus and Clusters are switches (they re-run
-  the image); zoom − / + / fit. Detector-C boxes are dotted, muted slate-blue (cluster) / umber (debris) outlines
+  (Detections · Masks · Status · Clusters & debris · Flagged only); Consensus, Clusters and Vote are switches (they
+  re-run the image). Not-segmented boxes are thin dotted grey; zoom − / + / fit. Detector-C boxes are dotted, muted slate-blue (cluster) / umber (debris) outlines
   with a light tint and a label ("Cluster 0.89") that keeps its on-screen size at any zoom.
-- **Side panel:** status counts, Clusters & debris counts (+ cells near each) with the note "Experimental: shown for
+- **Side panel:** status counts (Measurable / Review / Excluded / Not segmented), a Votes column (e.g. 2/3) in the
+  table and "Found by" in the cell details, Clusters & debris counts (+ cells near each) with the note "Experimental: shown for
   information, doesn't change cell status.", image-check warnings, top reasons, selected-cell details, the sortable
   cell table (select a row to zoom), downloads as quiet secondary buttons, stage timings.
 - **Status colours** stay distinct from the accent and from detector C: text green `#1B7A36` / orange `#A34A00` /

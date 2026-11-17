@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Options } from '../lib/api'
 
 export interface Stage {
-  key: 'detect' | 'consensus' | 'clusters' | 'segment' | 'gate'
+  key: 'detect' | 'consensus' | 'clusters' | 'vote' | 'segment' | 'gate'
   label: string
   detail: string
 }
@@ -11,10 +11,11 @@ export const STAGES: Stage[] = [
   { key: 'detect', label: 'Detect', detail: 'YOLO26s finds the cells' },
   { key: 'consensus', label: 'Consensus', detail: 'YOLO26l cross-checks them' },
   { key: 'clusters', label: 'Clusters & debris', detail: 'Detector C outlines clusters and debris' },
+  { key: 'vote', label: 'Vote', detail: 'Keep cells at least 2 detectors agree on' },
   { key: 'segment', label: 'Segment', detail: 'TinyUNet outlines cell and nucleus' },
   { key: 'gate', label: 'Quality gate', detail: 'Each mask is sorted by status' },
 ]
-const FALLBACK = { detect: 400, consensus: 2500, clusters: 600, segment: 1200, gate: 500 }
+const FALLBACK = { detect: 400, consensus: 2500, clusters: 600, vote: 60, segment: 1200, gate: 500 }
 
 /**
  * The API call is synchronous (one request, one response), so the current stage is an estimate from the warm-up
@@ -32,7 +33,7 @@ export function Analysis({ name, opts, typical, onCancel }: {
     const id = window.setInterval(() => setElapsed(performance.now() - t0), 100)
     return () => clearInterval(id)
   }, [])
-  const stages = STAGES.filter((s) => (s.key !== 'consensus' || opts.consensus) && (s.key !== 'clusters' || opts.clusters))
+  const stages = STAGES.filter((s) => (s.key !== 'consensus' || opts.consensus) && (s.key !== 'clusters' || opts.clusters) && (s.key !== 'vote' || opts.vote))
   const est = stages.map((s) => typical?.[s.key] || FALLBACK[s.key])
   const pre = 400                   // upload / decode
   const total = pre + est.reduce((a, b) => a + b, 0)

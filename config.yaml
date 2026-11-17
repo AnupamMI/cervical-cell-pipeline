@@ -58,8 +58,21 @@ detector_c:                        # "detector C": cluster / debris detector, IN
   max_det: 300
   classes: [cluster, debris]       # ONLY these classes are used; its `cell` class is ignored (YOLO26s stays the
                                    # only source of cells)
-  near_frac: 0.5                   # info flag near_cluster / near_debris when >= this share of a cell's detector box
-                                   # lies inside a C box of that class. Never changes measurable / review / excluded
+  near_frac: 0.5                   # near_cluster / near_debris when >= this share of a cell's detector box lies inside a
+                                   # C box of that class (info tag; with voting on, such a cell is not segmented)
+  cell_conf: 0.25                  # C's own `cell` class: used ONLY as a vote (voting below), never as a cell source
+
+voting:                            # which boxes get segmented. Off = every YOLO26s box (pipeline v3 behaviour, the
+                                   # samples/expected references). The web app turns it on by default (vote=true)
+  enabled: false
+  min_votes: 2                     # votes = detectors with a box at IoU >= match_iou: A (YOLO26s), B (YOLO26l),
+                                   # C (detector C cell class). 2 = majority of 3. If fewer detectors ran (consensus or
+                                   # detector C off), the requirement is min(min_votes, detectors that ran)
+  match_iou: 0.5
+  skip_in_cluster_debris: true     # a voted cell with >= detector_c.near_frac of its box inside a cluster / debris
+                                   # box is not segmented either (reason inside_cluster / inside_debris)
+  # Not segmented boxes stay in the outputs with status not_segmented and reason not_voted / inside_*.
+  # B+C boxes without an A partner can win the vote too (det_tag bc_only, B's box and confidence).
 
 crop:
   margin: 0.17              # per side, fraction of max(box w, h). = aug_v2.PAD used to build the v2/v2_1 training and

@@ -56,7 +56,9 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
             hint={avail.consensus ? 'YOLO26l confirms each cell. Never removes cells.' : 'Not available on this deployment.'} />
           <Switch checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
             onChange={(v) => setOpt('clusters', v)} label="Clusters & debris (detector C)"
-            hint={avail.clusters ? 'Experimental. Outlines only, never changes cell status.' : 'Not available on this deployment.'} />
+            hint={avail.clusters ? 'Outlines clusters and debris (never segmented). Its cell class is the third vote.' : 'Not available on this deployment.'} />
+          <Switch checked={opts.vote} onChange={(v) => setOpt('vote', v)} label="Segment voted cells only"
+            hint="Only cells at least 2 of 3 detectors agree on, outside clusters and debris. Others are shown, not segmented." />
         </div>
         {msg && <p className="error" role="alert">{msg}</p>}
         {busyRetry && (

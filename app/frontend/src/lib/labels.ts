@@ -4,12 +4,14 @@ export const STATUS_LABEL: Record<Status, string> = {
   measurable: 'Measurable',
   review: 'Review',
   excluded: 'Excluded',
+  not_segmented: 'Not segmented',
 }
 
 export const STATUS_HINT: Record<Status, string> = {
   measurable: 'Mask passed every check',
   review: 'Usable, but worth a look',
   excluded: 'Mask not usable for measurement',
+  not_segmented: 'Skipped by the vote: fewer than 2 detectors agree, or inside a cluster / debris box',
 }
 
 // Gate reason codes (ncmask/quality.py) and image QC flags in plain words
@@ -31,6 +33,9 @@ export const REASON: Record<string, string> = {
   dark_regions: 'Large dark regions',
   low_stain: 'Very little stained material',
   heavy_stain: 'Very heavy staining',
+  not_voted: 'Fewer than 2 detectors agree',
+  inside_cluster: 'Inside a cluster',
+  inside_debris: 'Inside debris',
 }
 
 export const reason = (code: string) => REASON[code] ?? code.replace(/_/g, ' ')
@@ -39,9 +44,13 @@ export const DET_LABEL: Record<string, string> = {
   consensus: 'Confirmed by YOLO26l',
   s_only: 'YOLO26s only',
   single: 'Consensus check off',
+  bc_only: 'Found by YOLO26l + detector C (missed by YOLO26s)',
 }
 
 export const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`)
 
 export const C_LABEL: Record<'cluster' | 'debris', string> = { cluster: 'Cluster', debris: 'Debris' }
 export const C_NOTE = "Experimental: shown for information, doesn't change cell status."
+
+export const VOTER: Record<string, string> = { A: 'YOLO26s', B: 'YOLO26l', C: 'Detector C' }
+export const voterNames = (v: string) => v.split('').map((x) => VOTER[x] ?? x).join(' + ')

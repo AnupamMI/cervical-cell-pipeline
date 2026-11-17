@@ -7,7 +7,8 @@
   masks      Dice >= 0.999 per FOV (pooled cell and nucleus foreground) and per cell (cell mask; nucleus Dice per
              cell is reported, and must be >= 0.99 where either nucleus has >= 50 px)
   gate       identical status for every matched cell (reasons compared and reported too), identical
-             near_cluster / near_debris, and (PyTorch) identical statuses with detector C on and off
+             near_cluster / near_debris, and (PyTorch) identical statuses with detector C on and off (voting off);
+             voting on: identical voters, statuses and reasons
 
     python scripts/check_onnx_parity.py [--samples samples] [--bundle models/onnx] [--limit N] [--json out.json]
 
@@ -67,6 +68,17 @@ def compare_fov(img, fid, pt, ox, cfg, ocfg):
         if res["c_changes_gate"]:
             res["fail"].append("detector C changed a status / reason / flag")
         res["c_boxes"] = {"n_pt": len(i1["c_boxes"]), "n_onnx": len(i2["c_boxes"])}
+        # voting on (the web app default): same voters and statuses for every box
+        import copy
+        vc, voc = copy.deepcopy(cfg), copy.deepcopy(ocfg)
+        vc["voting"]["enabled"] = voc["voting"]["enabled"] = True
+        v1 = process_fov(img, fid, fid, pt["detector"], pt["seg"], vc, pt["detector_b"], pt["detector_c"])[0]
+        v2 = process_fov(img, fid, fid, ox["detector"], ox["seg"], voc, ox["detector_b"], ox["detector_c"])[0]
+        vk = lambda rows: sorted((r["voters"], r["status"], r["reasons"]) for r in rows)
+        res["voting"] = {"n_pt": len(v1), "n_onnx": len(v2),
+                         "not_segmented": sum(r["status"] == "not_segmented" for r in v1)}
+        if vk(v1) != vk(v2):
+            res["fail"].append("voting on: voters / statuses differ")
     box = lambda rows: [[r[k] for k in ("box_x1", "box_y1", "box_x2", "box_y2")] for r in rows]
     pairs, ok = match(box(r1), box(r2), BOX_IOU)
     res["cells"] = {"n_pt": len(r1), "n_onnx": len(r2)}

@@ -250,11 +250,11 @@ img { max-width: 100%; display: block; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 .table thead th { position: sticky; top: 0; z-index: 1; background: #fafafb; text-align: left; font-weight: 500; padding: 0;
   border-bottom: 1px solid var(--line); }
-.table th button { width: 100%; display: flex; align-items: center; gap: 4px; padding: 8px; border: 0; background: none; white-space: nowrap;
+.table th button { width: 100%; display: flex; align-items: center; gap: 4px; padding: 8px 6px; border: 0; background: none; white-space: nowrap;
   cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); text-align: inherit; }
 .table th.num button { justify-content: flex-end; }
 .sortmark { min-width: 8px; }
-.table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.table td { padding: 6px 6px; border-bottom: 1px solid var(--line); }
 .table tbody tr { cursor: pointer; }
 .table tbody tr:hover { background: #fafafb; }
 .table tbody tr.is-sel { background: var(--accent-soft); }
@@ -306,4 +306,21 @@ img { max-width: 100%; display: block; }
   .panel { padding: 16px; }
   .col-cell_area_px { display: none; }
   .analysis__card { padding: 24px; }
+}
+
+/* ---------------------------------------------------------------- voting: not segmented (neutral grey) */
+:root { --ns: #55555b; --ns-bg: #ededf0; --ns-stroke: rgba(255, 255, 255, 0.95); }
+.st-not_segmented { --c: #8e8e93; --c-nuc: transparent; }
+.det.st-not_segmented { stroke-dasharray: 2 3; stroke-width: 1.2; }
+.chip--not_segmented { --s: var(--ns); --s-bg: var(--ns-bg); }
+.stat--not_segmented { --s: var(--ns); --s-bg: var(--ns-bg); }
+.lg--not_segmented::before { border: 1.5px dotted #8e8e93; }
+.stats { grid-template-columns: repeat(2, 1fr); }
+.stat { padding: 10px; }
+.stat__label { font-size: 12px; line-height: 1.2; }
+.votes { font-variant-numeric: tabular-nums; color: var(--muted); }
+.votes--3 { color: var(--ok); font-weight: 600; }
+.votes--2 { color: var(--ink); }
+@media (max-width: 600px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
 }

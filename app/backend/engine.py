@@ -112,9 +112,16 @@ class Engine:
         self.detector_c = OnnxDetector(cfg, dev, "detector_c", threads=threads) if self.clusters_available else None
         self.seg = OnnxSegModel(cfg, dev, threads=threads)
         # two configs, identical except the detection mode; consensus off = detector A only (B never runs)
+        # configs per (consensus, vote); consensus off = detector A only (B never runs)
         self.cfg_on = cfg
-        self.cfg_off = copy.deepcopy(cfg)
-        self.cfg_off["consensus"]["detection_mode"] = "single"
+        self._cfgs = {}
+        for cons in (True, False):
+            for vote in (True, False):
+                c = copy.deepcopy(cfg)
+                if not cons:
+                    c["consensus"]["detection_mode"] = "single"
+                c["voting"]["enabled"] = vote
+                self._cfgs[cons, vote] = c
         self.mismatch = self._check_bundle(cfg)
         self.health = self._health(cfg)
         self.typical_ms = None
@@ -185,10 +192,10 @@ class Engine:
         return img, info
 
     # ------------------------------------------------------------------ inference
-    def infer(self, img, consensus=True, name="upload", clusters=True):
+    def infer(self, img, consensus=True, name="upload", clusters=True, vote=True):
         use_b = bool(consensus) and self.consensus_available
         use_c = bool(clusters) and self.clusters_available
-        cfg = self.cfg_on if use_b else self.cfg_off
+        cfg = self._cfgs[use_b, bool(vote)]
         det, detb, seg = Timed(self.detector), Timed(self.detector_b) if use_b else None, TimedSeg(self.seg)
         detc = TimedDetC(self.detector_c) if use_c else None
         t0 = time.perf_counter()
@@ -200,7 +207,7 @@ class Engine:
         timings["gate"] = max(0.0, total - sum(timings.values()))
         timings["total"] = total
         return {"rows": rows, "coco": coco, "coco_full": info.pop("coco_full"), "overlay": overlay, "info": info,
-                "consensus_used": use_b, "clusters_used": use_c, "timings_ms": {k: round(1000 * v, 1) for k, v in timings.items()},
+                "consensus_used": use_b, "clusters_used": use_c, "vote_used": bool(vote), "timings_ms": {k: round(1000 * v, 1) for k, v in timings.items()},
                 "cell_lab": cell_lab}
 
     def warmup(self, img):
@@ -252,6 +259,7 @@ def to_json(res, img_shape, image_info, rid, expires_utc, consensus_requested, e
             "flags": [x for x in r["flags"].split(";") if x],
             "cell_area_px": r["cell_area_px"], "nucleus_area_px": r["nucleus_area_px"],
             "nc_ratio": _num(r["nc_ratio"]), "occluded_frac": r["occluded_frac"],
+            "votes": int(r["votes"].split("/")[0]), "voters": r["voters"],
             "near_cluster": [x for x in r["near_cluster"].split(";") if x],
             "near_debris": [x for x in r["near_debris"].split(";") if x],
             "cell_polygons": cells_p.get(cid, []), "nucleus_polygons": nuc_p.get(cid, [])})
@@ -280,8 +288,13 @@ def to_json(res, img_shape, image_info, rid, expires_utc, consensus_requested, e
                      "near_frac": engine.health["models"].get("detector_c", {}).get("near_frac"),
                      "boxes": [{"id": c["cell_id"], "class": c["object"], "conf": c["conf"],
                                 "box": [c["box_x1"], c["box_y1"], c["box_x2"], c["box_y2"]]} for c in cb]},
+        "voting": {"used": res.get("vote_used", False), "detectors_run": info["voting"]["detectors_run"],
+                   "votes_needed": info["voting"]["votes_needed"], "skip_in_cluster_debris":
+                       bool(engine.cfg_on["voting"].get("skip_in_cluster_debris", True)),
+                   "bc_only": sum(c["det_tag"] == "bc_only" for c in cells)},
         "cells": cells,
         "counts": {"total": len(cells), "status": info["status_counts"],
+                   "votes": dict(Counter(f"{c['votes']}/{info['voting']['detectors_run']}" for c in cells)),
                    "clusters": {o: sum(c["object"] == o for c in cb) for o in C_OBJECTS},
                    "near": {"cluster": sum(bool(c["near_cluster"]) for c in cells),
                             "debris": sum(bool(c["near_debris"]) for c in cells)},

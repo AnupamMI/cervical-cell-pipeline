@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Cell, Result, Status } from '../lib/api'
-import { C_NOTE, DET_LABEL, STATUS_HINT, STATUS_LABEL, fmtMs, reason } from '../lib/labels'
+import { C_NOTE, DET_LABEL, STATUS_HINT, STATUS_LABEL, fmtMs, reason, voterNames } from '../lib/labels'
 
-type Key = 'id' | 'status' | 'conf' | 'det_tag' | 'cell_area_px' | 'nc_ratio'
+type Key = 'id' | 'status' | 'conf' | 'votes' | 'cell_area_px' | 'nc_ratio'
 const COLS: { key: Key; label: string; num?: boolean; title?: string }[] = [
   { key: 'id', label: '#', num: true },
   { key: 'status', label: 'Status' },
   { key: 'conf', label: 'Conf', num: true },
-  { key: 'det_tag', label: '26l', title: 'Confirmed by the YOLO26l consensus check' },
-  { key: 'cell_area_px', label: 'Area', num: true, title: 'Cell area in pixels' },
+  { key: 'votes', label: 'Votes', title: 'Detectors that found this cell (YOLO26s, YOLO26l, detector C)' },
   { key: 'nc_ratio', label: 'N:C', num: true },
 ]
-const STATUS_ORDER: Record<Status, number> = { excluded: 0, review: 1, measurable: 2 }
+const STATUS_ORDER: Record<Status, number> = { not_segmented: 0, excluded: 1, review: 2, measurable: 3 }
 
 export function StatusChip({ s }: { s: Status }) {
   return (
@@ -74,7 +73,7 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
       </div>
 
       <ul className="stats" aria-label="Cells by status">
-        {(['measurable', 'review', 'excluded'] as Status[]).map((s) => (
+        {(['measurable', 'review', 'excluded', 'not_segmented'] as Status[]).map((s) => (
           <li key={s} className={`stat stat--${s}`} title={STATUS_HINT[s]}>
             <span className="stat__n">{st[s] ?? 0}</span>
             <span className="stat__label"><span className="dot" aria-hidden="true" />{STATUS_LABEL[s]}</span>
@@ -98,7 +97,9 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
             <div><dt>Cells near a cluster</dt><dd>{result.counts.near.cluster}</dd></div>
             <div><dt>Cells near debris</dt><dd>{result.counts.near.debris}</dd></div>
           </dl>
-          <p className="small muted">{C_NOTE}</p>
+          <p className="small muted">{result.voting.used
+            ? 'Clusters and debris are never segmented; cells inside them are skipped. Detector C is experimental (mAP50 ~0.5).'
+            : C_NOTE}</p>
         </section>
       )}
 
@@ -120,12 +121,16 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
           {sel.reasons.length > 0 && <p className="selcell__why">{sel.reasons.map(reason).join(' · ')}</p>}
           <dl className="kv kv--grid">
             <div><dt>Confidence</dt><dd>{sel.conf.toFixed(3)}</dd></div>
-            <div><dt>Detection</dt><dd>{DET_LABEL[sel.det_tag]}</dd></div>
-            <div><dt>Cell area</dt><dd>{sel.cell_area_px.toLocaleString()} px</dd></div>
-            <div><dt>Nucleus</dt><dd>{sel.nucleus_area_px.toLocaleString()} px</dd></div>
-            <div><dt>N:C</dt><dd>{sel.nc_ratio == null ? '—' : sel.nc_ratio.toFixed(3)}</dd></div>
-            <div><dt>Occluded</dt><dd>{Math.round(sel.occluded_frac * 100)}%</dd></div>
-            {cl.used && (sel.near_cluster.length > 0 || sel.near_debris.length > 0) && (
+            <div><dt>Votes</dt><dd>{sel.votes} of {result.voting.detectors_run}</dd></div>
+            <div className="kv__wide"><dt>Found by</dt><dd>{voterNames(sel.voters)}</dd></div>
+            <div className="kv__wide"><dt>Detection</dt><dd>{DET_LABEL[sel.det_tag]}</dd></div>
+            {sel.status !== 'not_segmented' && <>
+              <div><dt>Cell area</dt><dd>{sel.cell_area_px.toLocaleString()} px</dd></div>
+              <div><dt>Nucleus</dt><dd>{sel.nucleus_area_px.toLocaleString()} px</dd></div>
+              <div><dt>N:C</dt><dd>{sel.nc_ratio == null ? '—' : sel.nc_ratio.toFixed(3)}</dd></div>
+              <div><dt>Occluded</dt><dd>{Math.round(sel.occluded_frac * 100)}%</dd></div>
+            </>}
+            {cl.used && !result.voting.used && (sel.near_cluster.length > 0 || sel.near_debris.length > 0) && (
               <div className="kv__wide"><dt>Detector C (info)</dt>
                 <dd>{[sel.near_cluster.length ? 'near a cluster' : '', sel.near_debris.length ? 'near debris' : ''].filter(Boolean).join(', ')}</dd></div>
             )}
@@ -163,10 +168,8 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
                   </td>
                   <td><StatusChip s={c.status} /></td>
                   <td className="num">{c.conf.toFixed(2)}</td>
-                  <td><span className={`tag tag--${c.det_tag}`} title={DET_LABEL[c.det_tag]}>
-                    <span aria-hidden="true">{c.det_tag === 'consensus' ? '✓' : c.det_tag === 's_only' ? '–' : 'off'}</span>
-                    <span className="sr-only">{DET_LABEL[c.det_tag]}</span></span></td>
-                  <td className="num col-cell_area_px">{c.cell_area_px.toLocaleString()}</td>
+                  <td><span className={`votes votes--${c.votes}`} title={voterNames(c.voters)}>
+                    {c.votes}/{result.voting.detectors_run}<span className="sr-only"> ({voterNames(c.voters)})</span></span></td>
                   <td className="num">{c.nc_ratio == null ? '—' : c.nc_ratio.toFixed(2)}</td>
                 </tr>
               ))}

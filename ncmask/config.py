@@ -80,7 +80,17 @@ def load(path):
         if not 0 < dcc["conf"] < 1 or not 0 < dcc["nms_iou"] <= 1 or not 0 < dcc["near_frac"] <= 1:
             raise ConfigError("detector_c.conf, nms_iou and near_frac must be in (0, 1]")
         if not dcc["classes"] or not all(c in C_CLASSES for c in dcc["classes"]):
-            raise ConfigError(f"detector_c.classes: a non-empty subset of {list(C_CLASSES)} (its cell class is never used)")
+            raise ConfigError(f"detector_c.classes: a non-empty subset of {list(C_CLASSES)} (its cell class is only a vote)")
+        dcc.setdefault("cell_conf", 0.25)
+        if not 0 < dcc["cell_conf"] < 1:
+            raise ConfigError("detector_c.cell_conf must be in (0, 1)")
+        # one C run: cluster / debris at conf, its cell class (votes only) at cell_conf; per-class thresholds
+        dcc["class_conf"] = {**{c: float(dcc["conf"]) for c in dcc["classes"]}, "cell": float(dcc["cell_conf"])}
+    v = cfg.setdefault("voting", {"enabled": False})
+    v.setdefault("enabled", False); v.setdefault("min_votes", 2); v.setdefault("match_iou", 0.5)
+    v.setdefault("skip_in_cluster_debris", True)
+    if not isinstance(v["enabled"], bool) or v["min_votes"] not in (1, 2, 3) or not 0 < float(v["match_iou"]) <= 1:
+        raise ConfigError("voting: enabled true|false, min_votes 1|2|3, match_iou in (0, 1]")
     for sec, k in PATH_KEYS:
         if sec not in cfg:
             continue

@@ -218,7 +218,13 @@ All paths and parameters live here. Relative paths resolve against the config fi
 |---|---|---|---|
 | A | YOLO26s @640 (`detector`) | the only source of candidate cells | yes (every cell comes from it) |
 | B | YOLO26l @1280 (`detector_b`) | consensus check: tags each A box `consensus` / `s_only` | only via `s_only_low_conf` (review) |
-| C | YOLO26s @1024 (`detector_c`), classes cell / cluster / debris | uses **only** cluster + debris boxes (conf >= 0.5): info tags `near_cluster` / `near_debris` when >= 50 % of a cell box lies in a C box; boxes listed in cells.csv (`object` = cluster / debris), COCO (categories 3 / 4), done.json and the overlay | **no**: computed after the gate, never an input to it (verified on every sample) |
+| C | YOLO26s @1024 (`detector_c`), classes cell / cluster / debris | voting off: uses **only** cluster + debris boxes (conf >= 0.5): info tags `near_cluster` / `near_debris` when >= 50 % of a cell box lies in a C box; boxes listed in cells.csv (`object` = cluster / debris), COCO (categories 3 / 4), done.json and the overlay | voting off: **no** (computed after the gate, verified on every sample); voting on: its cell class is the third vote and cluster / debris boxes block segmentation |
+
+**Voting (`voting.enabled`, off in `config.yaml`, on by default in the web app):** a box is segmented only if at
+least `min_votes` (2) of A, B and C's own cell class (conf >= `detector_c.cell_conf`, 0.25) agree on it (IoU >= 0.5),
+and it is not >= 50 % inside a cluster / debris box. B + C cells that A missed count too (`det_tag` `bc_only`). The
+rest stay in the outputs with status `not_segmented` (reason `not_voted` / `inside_cluster` / `inside_debris`);
+`cells.csv` gains `votes` ("2/3") and `voters` ("AC"). Details and numbers on the samples: `app/README.md`.
 
 Detector C (`models/detector_c/yolo26s_1024_ccd_best.pt`, SHA256 `a72ae657…df23255`): 100 epochs, freeze 10,
 AdamW, cos_lr; **test mAP50 cell 0.829, cluster 0.503, debris 0.539**, many background false positives at conf
@@ -252,7 +258,7 @@ consensus | s_only; `b_conf` / `ab_iou` = the matched B box's confidence and IoU
 in-FOV pixels removed by the clip (0 with the default). Areas are the final pixel counts in the label maps (after overlap
 resolution). `flags` are `;`-separated. Cell ids are 1..N per FOV, ordered by confidence (then y, x). Pipeline v3 also
 writes `status`, `reasons`, the exclusive / full areas and, at the end, `near_cluster`, `near_debris` (detector-C box
-ids, `;`-separated) and `object` (`cell`, or `cluster` / `debris` for detector-C rows).
+ids, `;`-separated), `object` (`cell`, or `cluster` / `debris` for detector-C rows), `votes` and `voters`.
 
 Each FOV's files are written to `fovs/<id>.tmp/` and renamed into place when complete, so a crash never leaves a
 half-written FOV that looks done.

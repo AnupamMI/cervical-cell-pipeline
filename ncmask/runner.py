@@ -13,7 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import config as cfgmod
-from .fov import CELL_COLS, L_ONLY_COLS, process_fov, write_fov_outputs
+from .fov import CELL_COLS, L_ONLY_COLS, STATUSES, process_fov, write_fov_outputs
 from .imageio import ImageLoadError, load_bgr8
 
 log = logging.getLogger("ncmask")
@@ -309,7 +309,7 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
     if mode != "single":
         log.info("  detection_mode %s: %s   l_only (B only, not segmented): %d -> l_only.csv", mode,
                  ", ".join(f"{k} {v}" for k, v in tag_counts.most_common()), n_l_only)
-    log.info("  status: %s", ", ".join(f"{k} {status_counts.get(k, 0)}" for k in ("measurable", "review", "excluded")))
+    log.info("  status: %s", ", ".join(f"{k} {status_counts.get(k, 0)}" for k in STATUSES))
     for rs, n in reason_counts.most_common():
         log.info("  reason %-32s %6d", rs, n)
     log.info("  FOV image QC: %s", dict(qc_counts))

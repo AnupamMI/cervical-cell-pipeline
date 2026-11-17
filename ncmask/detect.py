@@ -47,9 +47,12 @@ class Detector:
         self._setup_classes()
 
     def _setup_classes(self):
-        """detector_c: classes (names) -> ids of this checkpoint; per-class NMS. A / B: all classes, agnostic."""
-        want = self.cfg.get("classes")
+        """detector_c: class_conf {name: conf} (else classes) -> ids of this checkpoint; per-class NMS, predicted at
+        the lowest of the thresholds, then each class cut at its own. A / B: all classes, agnostic."""
+        cc = self.cfg.get("class_conf")
+        want = list(cc) if cc else self.cfg.get("classes")
         self.agnostic = want is None
+        self.class_conf = None
         if want is None:
             self.class_ids = None
             return
@@ -58,6 +61,9 @@ class Detector:
         if missing:
             raise ValueError(f"{self.cfg['weights']}: classes {missing} not in the checkpoint (has {self.names})")
         self.class_ids = sorted(inv[c] for c in want)
+        if cc:
+            self.class_conf = {inv[k]: float(v) for k, v in cc.items()}
+            self.cfg["conf"] = min(self.class_conf.values())
 
     def _predict(self, imgs):
         """-> list of (boxes (N,4) xyxy, conf (N,), cls (N,) int) per image."""
@@ -123,5 +129,8 @@ class Detector:
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, H)
         keep = self._nms(boxes, conf, cls)
         boxes, conf, cls = boxes[keep], conf[keep], cls[keep]
+        if self.class_conf:   # per-class thresholds (same result as before NMS: NMS here is within each class)
+            ok = np.array([c > self.class_conf[int(k)] for c, k in zip(conf, cls)], bool) if len(conf) else np.zeros(0, bool)
+            boxes, conf, cls = boxes[ok], conf[ok], cls[ok]
         order = np.lexsort((boxes[:, 0], boxes[:, 1], -conf)) if len(boxes) else np.zeros(0, int)
         return boxes[order], conf[order], cls[order], {"tiled": tiled, "n_raw": int(n_raw), "n_after_nms": int(len(boxes))}

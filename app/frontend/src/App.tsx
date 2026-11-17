@@ -21,7 +21,7 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [samples, setSamples] = useState<Sample[] | null>(null)
   const [samplesError, setSamplesError] = useState(false)
-  const [opts, setOpts] = useState<Options>({ consensus: true, clusters: true })
+  const [opts, setOpts] = useState<Options>({ consensus: true, clusters: true, vote: true })
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyRetry, setBusyRetry] = useState<Source | null>(null)
@@ -38,8 +38,9 @@ export default function App() {
     getSamples().then(setSamples).catch(() => setSamplesError(true))
   }, [])
 
-  const avail = { consensus: health?.consensus_available ?? true, clusters: health?.clusters_available ?? true }
-  const eff: Options = { consensus: opts.consensus && avail.consensus, clusters: opts.clusters && avail.clusters }
+  const avail: Options = { consensus: health?.consensus_available ?? true, clusters: health?.clusters_available ?? true, vote: true }
+  const effOf = (o: Options): Options => ({ consensus: o.consensus && avail.consensus, clusters: o.clusters && avail.clusters, vote: o.vote })
+  const eff = effOf(opts)
 
   const run = useCallback(async (src: Source, o: Options, inPlace = false) => {
     abort.current?.abort()
@@ -83,7 +84,7 @@ export default function App() {
   const setOpt = (k: keyof Options, v: boolean) => {
     const o = { ...opts, [k]: v }
     setOpts(o)
-    if (screen === 'viewer' && source.current) run(source.current, { consensus: o.consensus && avail.consensus, clusters: o.clusters && avail.clusters }, true)
+    if (screen === 'viewer' && source.current) run(source.current, effOf(o), true)
   }
   const select = (id: number | null, zoom = false) => {
     setSelected(id)
@@ -147,7 +148,8 @@ function Legend({ clusters }: { clusters: boolean }) {
       <li className="lg lg--measurable">Measurable</li>
       <li className="lg lg--review">Review</li>
       <li className="lg lg--excluded">Excluded</li>
-      <li className="lg lg--dashed">YOLO26s only</li>
+      <li className="lg lg--dashed">Not confirmed by YOLO26l</li>
+      <li className="lg lg--not_segmented">Not segmented</li>
       {clusters && <li className="lg lg--cluster">Cluster</li>}
       {clusters && <li className="lg lg--debris">Debris</li>}
     </ul>

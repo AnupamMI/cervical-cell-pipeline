@@ -4,8 +4,11 @@ cell_at_edge / crop_clamped, box size vs training -> Stage 3 crop (margin, mirro
 nucleus within cell -> Stage 4 two layers: FULL per-cell masks (measurement, overlaps allowed) + EXCLUSIVE label map
 (display; higher confidence wins) -> occluded_frac, no cell dropped for overlap -> Stage 5 gate (measurable / review /
 excluded + reasons) -> outputs.
-Optional, information only: detector C (cluster / debris boxes) -> per-cell near_cluster / near_debris (the C box ids
-covering >= detector_c.near_frac of the cell's detector box). Computed AFTER the gate and never an input to it."""
+Optional: detector C (cluster / debris boxes, never segmented) -> per-cell near_cluster / near_debris (the C box ids
+covering >= detector_c.near_frac of the cell's detector box). Voting off: information only, computed after the gate.
+Voting on (cfg voting.enabled): a box is segmented only if >= min_votes of the detectors that ran (A YOLO26s, B YOLO26l,
+C's cell class) agree on it and it is not inside a cluster / debris box; the rest stay in the outputs as
+status not_segmented (reason not_voted / inside_cluster / inside_debris)."""
 import json
 import logging
 import time
@@ -23,11 +26,13 @@ log = logging.getLogger("ncmask.fov")
 CELL_COLS = ["fov", "cell_id", "status", "reasons", "box_x1", "box_y1", "box_x2", "box_y2", "conf", "det_tag", "b_conf",
              "ab_iou", "cell_area_px", "nucleus_area_px", "nc_ratio", "excl_cell_area_px", "excl_nucleus_area_px",
              "occluded_frac", "flags", "fov_qc", "crop_x0", "crop_y0", "crop_x1", "crop_y1", "clipped_frac",
-             "near_cluster", "near_debris", "object"]
+             "near_cluster", "near_debris", "object", "votes", "voters"]
 # cells.csv also lists detector-C boxes (object = cluster | debris, cell_id = C1, C2, ...; no status: info only)
 C_OBJECTS = ("cluster", "debris")
 C_BGR = {"cluster": (150, 110, 140), "debris": (90, 130, 160)}   # muted: never confused with the status colours
-STATUS_BGR = {"measurable": (0, 200, 0), "review": (0, 165, 255), "excluded": (0, 0, 255)}
+STATUS_BGR = {"measurable": (0, 200, 0), "review": (0, 165, 255), "excluded": (0, 0, 255),
+              "not_segmented": (170, 170, 170)}
+STATUSES = ("measurable", "review", "excluded", "not_segmented")
 L_ONLY_COLS = ["fov", "b_conf", "box_x1", "box_y1", "box_x2", "box_y2", "max_iou_with_A"]
 # COCO categories follow the training annotations (instances_default.json)
 CATEGORIES = [{"id": 1, "name": "nucleus-area", "supercategory": ""}, {"id": 2, "name": "cell-area", "supercategory": ""}]
@@ -158,17 +163,19 @@ def extract_crop(img, box, cfg, seg):
 
 
 def run_detector_c(img, fov_id, detector_c):
-    """-> list of C-box records (object = cluster | debris, cell_id C1.. by conf), info."""
+    """-> (C-box records (object = cluster | debris, cell_id C1.. by conf), C's cell boxes (N,4) (votes only), info)."""
     boxes, conf, cls, cinfo = detector_c.detect(img)
+    names = np.array([detector_c.names[int(n)] for n in cls], dtype=object)
+    cells = boxes[names == "cell"] if len(boxes) else np.zeros((0, 4))
     recs = []
-    for k, (b, c, n) in enumerate(zip(boxes, conf, cls), 1):
-        name = detector_c.names[int(n)]
-        if name not in C_OBJECTS:          # its cell class is filtered before NMS; never let it through
+    for b, c, name in zip(boxes, conf, names):
+        if name not in C_OBJECTS:          # its cell class is a vote only, never a box of its own
             continue
         recs.append({"fov": fov_id, "cell_id": f"C{len(recs) + 1}", "object": name, "conf": round(float(c), 5),
                      **{k2: round(float(v), 2) for k2, v in zip(("box_x1", "box_y1", "box_x2", "box_y2"), b)}})
     cinfo.update({"n_" + o: sum(r["object"] == o for r in recs) for o in C_OBJECTS})
-    return recs, cinfo
+    cinfo["n_cell_votes"] = int(len(cells))
+    return recs, cells, cinfo
 
 
 def near_c(box, c_boxes, frac):
@@ -188,8 +195,9 @@ def near_c(box, c_boxes, frac):
 
 def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, detector_c=None):
     """Returns (rows, coco dict, cell_lab, nuc_lab, overlay or None, info). Raises on internal errors.
-    detector_c (optional, information only): its boxes go to info['c_boxes'], COCO and the overlay, and every row
-    gets near_cluster / near_debris; statuses, reasons and flags are identical with or without it."""
+    detector_c (optional): its cluster / debris boxes go to info['c_boxes'], COCO and the overlay, and every row
+    gets near_cluster / near_debris. With voting off, statuses, reasons and flags are identical with or without it;
+    with voting on, its cell class is the third vote and cluster / debris boxes block segmentation (see module doc)."""
     t0 = time.perf_counter()
     H, W = img.shape[:2]
     qc_flags, qc_metrics = image_qc(img, cfg["qc"])                       # Stage 0: flag, never skip
@@ -198,6 +206,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
     dropped, l_only = [], []   # dropped: removed from the outputs, with the reason (done.json + run dropped.csv)
     tag = np.array(["single"] * len(boxes), dtype=object)
     bconf, abiou = np.full(len(boxes), np.nan), np.full(len(boxes), np.nan)
+    am = np.zeros(len(boxes), bool)
+    bb = np.zeros((0, 4)); bc = np.zeros(0); bm = np.zeros(0, bool)
     if mode != "single":
         if detector_b is None:
             raise ValueError(f"detection_mode {mode} needs detector B")
@@ -217,11 +227,35 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
             for j in np.where(~am)[0]:
                 dropped.append({"reason": "s_only_filtered", "cell_id": "", "conf": round(float(conf[j]), 5),
                                 "box": [round(float(v), 2) for v in boxes[j]], "detail": "no matching detector-B box"})
-            boxes, conf, tag, bconf, abiou = boxes[am], conf[am], tag[am], bconf[am], abiou[am]
-    c_boxes, near_frac = [], None
+            boxes, conf, tag, bconf, abiou, am = boxes[am], conf[am], tag[am], bconf[am], abiou[am], am[am]
+    c_boxes, near_frac, c_cells = [], None, np.zeros((0, 4))
     if detector_c is not None:
-        c_boxes, dinfo["c"] = run_detector_c(img, fov_id, detector_c)
+        c_boxes, c_cells, dinfo["c"] = run_detector_c(img, fov_id, detector_c)
         near_frac = float(cfg["detector_c"]["near_frac"])
+    # votes: A (every candidate from YOLO26s), B (matched YOLO26l box), C (matched detector-C cell box)
+    vt = cfg.get("voting") or {}
+    voting = bool(vt.get("enabled"))
+    n_run = 1 + (mode != "single") + (detector_c is not None)
+    need = min(int(vt.get("min_votes", 2)), n_run)
+    viou = float(vt.get("match_iou", 0.5))
+    ac = match_boxes(boxes, c_cells, viou)[1] if detector_c is not None else np.zeros(len(boxes), bool)
+    voters = np.array(["A" + ("B" if x else "") + ("C" if y else "") for x, y in zip(am, ac)], dtype=object)
+    if voting and mode != "single" and detector_c is not None and need <= 2:
+        # B + C agree on a cell YOLO26s missed: a majority without A -> a candidate with B's box and confidence
+        free = np.where(~bm)[0]
+        cfree = np.where(~match_boxes(boxes, c_cells, viou)[2])[0] if len(c_cells) else np.zeros(0, int)
+        pairs_bc = match_boxes(bb[free], c_cells[cfree], viou)[0] if len(free) and len(cfree) else []
+        if pairs_bc:
+            jj = np.array([free[i] for i, _, _ in pairs_bc])
+            boxes = np.concatenate([boxes, bb[jj]]); conf = np.concatenate([conf, bc[jj]])
+            tag = np.concatenate([tag, np.array(["bc_only"] * len(jj), dtype=object)])
+            bconf = np.concatenate([bconf, bc[jj]]); abiou = np.concatenate([abiou, np.full(len(jj), np.nan)])
+            voters = np.concatenate([voters, np.array(["BC"] * len(jj), dtype=object)])
+            gone = {tuple(round(float(v), 2) for v in bb[j]) for j in jj}
+            l_only = [d for d in l_only if (d["box_x1"], d["box_y1"], d["box_x2"], d["box_y2"]) not in gone]
+            o = np.lexsort((boxes[:, 0], boxes[:, 1], -conf))
+            boxes, conf, tag, bconf, abiou, voters = boxes[o], conf[o], tag[o], bconf[o], abiou[o], voters[o]
+        dinfo["n_bc_only"] = len(pairs_bc)
     t_det = time.perf_counter() - t0
     pp, sc, dc = cfg["postprocess"], cfg["seg"], cfg["detector"]
     if dc["containment_thr"] and len(boxes):
@@ -231,7 +265,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
                             "box": [round(float(v), 2) for v in boxes[j]],
                             "detail": f"{into[j]:.2f} of its area inside a higher-confidence box"})
             log.info("%s: dropped contained box conf %.3f (%.0f%% inside a higher-conf box)", fov_id, conf[j], 100 * into[j])
-        boxes, conf, tag, bconf, abiou = boxes[keep], conf[keep], tag[keep], bconf[keep], abiou[keep]
+        boxes, conf, tag, bconf, abiou, voters = \
+            boxes[keep], conf[keep], tag[keep], bconf[keep], abiou[keep], voters[keep]
     dinfo["n_contained_dropped"] = int(sum(d["reason"] == "contained" for d in dropped))
     min_px = float(dc["min_box_px"])
     e = float(pp["cell_at_edge_px"])
@@ -240,12 +275,21 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
     for i, (b, c) in enumerate(zip(boxes, conf), 1):
         rec = {"cell_id": i, "conf": float(c), "box": [float(v) for v in b], "flags": [], "det_tag": tag[i - 1],
                "b_conf": "" if np.isnan(bconf[i - 1]) else round(float(bconf[i - 1]), 5),
-               "ab_iou": "" if np.isnan(abiou[i - 1]) else round(float(abiou[i - 1]), 4)}
+               "ab_iou": "" if np.isnan(abiou[i - 1]) else round(float(abiou[i - 1]), 4),
+               "voters": voters[i - 1], "skip": []}
+        rec["near"] = near_c(rec["box"], c_boxes, near_frac) if near_frac is not None else {o: [] for o in C_OBJECTS}
         if b[0] <= e or b[1] <= e or b[2] >= W - e or b[3] >= H - e:
             rec["flags"].append("cell_at_edge")
         bw, bh = b[2] - b[0], b[3] - b[1]
         if not cfg["size"]["box_area_min"] <= bw * bh <= cfg["size"]["box_area_max"]:
             rec["flags"].append("box_size_out_of_range")
+        if voting:
+            if len(rec["voters"]) < need:
+                rec["skip"].append("not_voted")
+            elif vt.get("skip_in_cluster_debris", True):
+                rec["skip"] += ["inside_" + o for o in C_OBJECTS if rec["near"][o]]
+            if rec["skip"]:
+                rows_pre.append((rec, None)); continue
         if bw < min_px or bh < min_px:
             rec["flags"].append("box_too_small")
             rows_pre.append((rec, None)); continue
@@ -316,6 +360,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
             cm = nm = fc = fn = None; ca = na = eca = ena = 0; occl = 0.0; touch = False; crop_xy = ("", "", "", "")
         nc = na / (ca - na) if ca > na and na > 0 else float("nan")
         status, reasons = gate(flags, ca, na, nc, occl, rec["det_tag"], rec["conf"], touch, cfg["size"], cfg["gate"])
+        if rec["skip"]:   # voting: not segmented on purpose (not a mask-quality verdict)
+            status, reasons = "not_segmented", list(rec["skip"])
         row = {"fov": fov_id, "cell_id": cid, "status": status, "reasons": ";".join(reasons),
                "box_x1": round(x1, 2), "box_y1": round(y1, 2), "box_x2": round(x2, 2), "box_y2": round(y2, 2),
                "conf": round(rec["conf"], 5), "det_tag": rec["det_tag"], "b_conf": rec["b_conf"], "ab_iou": rec["ab_iou"],
@@ -324,9 +370,9 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
                "flags": ";".join(flags), "fov_qc": ";".join(qc_flags),
                "crop_x0": crop_xy[0], "crop_y0": crop_xy[1], "crop_x1": crop_xy[2], "crop_y1": crop_xy[3],
                "clipped_frac": round(rec.get("clipped_frac", 0.0), 5)}
-        # detector C: after the gate, never an input to it
-        near = near_c(rec["box"], c_boxes, near_frac) if near_frac is not None else {o: [] for o in C_OBJECTS}
-        row.update({"near_cluster": ";".join(near["cluster"]), "near_debris": ";".join(near["debris"]), "object": "cell"})
+        near = rec["near"]
+        row.update({"near_cluster": ";".join(near["cluster"]), "near_debris": ";".join(near["debris"]), "object": "cell",
+                    "votes": f"{len(rec['voters'])}/{n_run}", "voters": rec["voters"]})
         rows.append(row)
         fattrs = {"cell_id": cid, "status": status, "reasons": reasons, "conf": row["conf"], "det_tag": rec["det_tag"],
                   "occluded_frac": row["occluded_frac"], "nc_ratio": row["nc_ratio"],
@@ -369,7 +415,8 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, dete
     info = {"detector": dinfo, "n_cells": len(rows), "dropped": dropped, "l_only": l_only, "detection_mode": mode,
             "detector_c_used": detector_c is not None, "c_boxes": c_boxes,
             "fov_qc": qc_flags, "fov_qc_metrics": qc_metrics, "coco_full": coco_full,
-            "status_counts": {k: sum(r["status"] == k for r in rows) for k in ("measurable", "review", "excluded")},
+            "status_counts": {k: sum(r["status"] == k for r in rows) for k in STATUSES},
+            "voting": {"enabled": voting, "detectors_run": n_run, "votes_needed": need if voting else None},
             "n_dropped_overlap": len(dropped_ov), "t_detect_s": round(t_det, 4), "t_seg_s": round(t_seg, 4),
             "t_total_s": round(time.perf_counter() - t0, 4), "t_post_s": round(t2 - t1 - t_seg, 4)}
     return rows, coco, cell_lab, nuc_lab, overlay, info

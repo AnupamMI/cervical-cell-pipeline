@@ -1,5 +1,5 @@
-export type Status = 'measurable' | 'review' | 'excluded'
-export type DetTag = 'consensus' | 's_only' | 'single'
+export type Status = 'measurable' | 'review' | 'excluded' | 'not_segmented'
+export type DetTag = 'consensus' | 's_only' | 'single' | 'bc_only'
 export type Pt = [number, number]
 
 export interface Cell {
@@ -16,6 +16,8 @@ export interface Cell {
   nucleus_area_px: number
   nc_ratio: number | null
   occluded_frac: number
+  votes: number
+  voters: string
   near_cluster: string[]
   near_debris: string[]
   cell_polygons: Pt[][]
@@ -37,6 +39,7 @@ export interface Result {
   image_qc: { ok: boolean; flags: string[]; metrics: Record<string, number> }
   consensus: { requested: boolean; used: boolean; l_only: number }
   clusters: { requested: boolean; used: boolean; info_only: true; conf: number | null; near_frac: number | null; boxes: CBox[] }
+  voting: { used: boolean; detectors_run: number; votes_needed: number | null; skip_in_cluster_debris: boolean; bc_only: number }
   cells: Cell[]
   counts: {
     total: number
@@ -44,6 +47,7 @@ export interface Result {
     reasons: Record<string, number>
     det_tag: Record<string, number>
     dropped: Record<string, number>
+    votes: Record<string, number>
     clusters: Record<CKind, number>
     near: Record<CKind, number>
   }
@@ -99,13 +103,14 @@ export type Source = { kind: 'file'; file: File } | { kind: 'sample'; name: stri
 export interface Options {
   consensus: boolean
   clusters: boolean
+  vote: boolean
 }
 
 export async function infer(src: Source, o: Options, signal?: AbortSignal): Promise<Result> {
   const fd = new FormData()
   if (src.kind === 'file') fd.append('file', src.file)
   else fd.append('sample', src.name)
-  const r = await fetch(`/api/infer?consensus=${o.consensus}&clusters=${o.clusters}`, { method: 'POST', body: fd, signal })
+  const r = await fetch(`/api/infer?consensus=${o.consensus}&clusters=${o.clusters}&vote=${o.vote}`, { method: 'POST', body: fd, signal })
   return json<Result>(r)
 }
 

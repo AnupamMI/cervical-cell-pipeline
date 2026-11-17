@@ -216,8 +216,10 @@ def _save_upload(file: UploadFile, dst: Path):
 def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tiff/.png/.jpg/.jpeg, at most 25 MB"),
           sample: str | None = Form(None, description="instead of a file: the name of a sample from /api/samples"),
           consensus: bool = Query(True, description="run the YOLO26l consensus check (tag only, never filters)"),
-          clusters: bool = Query(True, description="run detector C (cluster / debris boxes; information only, "
-                                                   "never changes a cell's status)")):
+          clusters: bool = Query(True, description="run detector C (cluster / debris boxes, never segmented; its "
+                                                   "cell class is the third vote)"),
+          vote: bool = Query(True, description="segment only boxes at least 2 detectors agree on and that are not "
+                                               "inside a cluster / debris box; the rest are listed as not_segmented")):
     if (file is None) == (sample is None):
         return err(400, "bad_request", "send exactly one of: a file, or a sample name")
     if file is not None and Path(file.filename or "").suffix.lower() not in EXTS:
@@ -246,7 +248,8 @@ def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tif
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 tmpdir = None
         t_decode = time.perf_counter() - t0
-        res = S.engine.infer(img, consensus, name=(sample + ".tiff") if sample else "upload", clusters=clusters)
+        res = S.engine.infer(img, consensus, name=(sample + ".tiff") if sample else "upload", clusters=clusters,
+                             vote=vote)
         res["clusters_requested"] = clusters
         files = {"overlay.png": eng.encode_png(res["overlay"]),
                  "cells.csv": eng.cells_csv(res["rows"], res["info"].get("c_boxes", [])),
@@ -257,8 +260,9 @@ def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tif
         out["timings_ms"]["decode"] = round(1000 * t_decode, 1)
         out["timings_ms"]["request"] = round(1000 * (time.perf_counter() - t0), 1)
         out["source"] = {"sample": sample} if sample else {"upload": True}
-        log.info("result %s: %dx%d, %d cells, consensus %s, clusters %s, %.0f ms", rid[:6], img.shape[1], img.shape[0],
-                 len(out["cells"]), res["consensus_used"], res["clusters_used"], out["timings_ms"]["request"])
+        log.info("result %s: %dx%d, %d cells, consensus %s, clusters %s, vote %s, %.0f ms", rid[:6], img.shape[1],
+                 img.shape[0], len(out["cells"]), res["consensus_used"], res["clusters_used"], vote,
+                 out["timings_ms"]["request"])
         return out
     except Exception:
         log.exception("inference failed")

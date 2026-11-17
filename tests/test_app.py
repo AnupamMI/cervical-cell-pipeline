@@ -20,7 +20,7 @@ pytestmark = [pytest.mark.skipif(bool(need), reason=f"needs {need}"),
 SAMPLE = "cervical_0001"
 CELL_KEYS = {"id", "box", "conf", "det_tag", "b_conf", "ab_iou", "status", "reasons", "flags", "cell_area_px",
              "nucleus_area_px", "nc_ratio", "occluded_frac", "cell_polygons", "nucleus_polygons", "near_cluster",
-             "near_debris"}
+             "near_debris", "votes", "voters"}
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +30,14 @@ def client():
     from app.backend.main import app
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(scope="module")
+def unvoted(client):
+    """vote=false: every YOLO26s box segmented (pipeline v3 behaviour, as the samples/expected references)."""
+    r = client.post("/api/infer?consensus=true&vote=false", data={"sample": SAMPLE})
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 @pytest.fixture(scope="module")
@@ -79,8 +87,9 @@ def test_infer_schema(result):
     assert len(r["cells"]) > 10
     for c in r["cells"]:
         assert set(c) == CELL_KEYS
-        assert c["status"] in ("measurable", "review", "excluded")
-        assert c["det_tag"] in ("consensus", "s_only")
+        assert c["status"] in ("measurable", "review", "excluded", "not_segmented")
+        assert c["det_tag"] in ("consensus", "s_only", "bc_only")
+        assert c["votes"] == len(c["voters"]) and set(c["voters"]) <= set("ABC")
         x1, y1, x2, y2 = c["box"]
         assert 0 <= x1 < x2 <= 2028 and 0 <= y1 < y2 <= 1520
         for poly in c["cell_polygons"] + c["nucleus_polygons"]:
@@ -109,7 +118,24 @@ def test_infer_schema(result):
             assert c["near_" + k] == want
 
 
-def test_matches_pipeline_reference(result):
+def test_voting(result):
+    """Default vote=true: segmented only with >= 2 of 3 detectors and not inside a cluster / debris box."""
+    v = result["voting"]
+    assert v["used"] and v["detectors_run"] == 3 and v["votes_needed"] == 2
+    cl = {b["id"]: b for b in result["clusters"]["boxes"]}
+    for c in result["cells"]:
+        if c["status"] == "not_segmented":
+            assert c["cell_polygons"] == [] and c["cell_area_px"] == 0
+            assert c["reasons"] in (["not_voted"], ["inside_cluster"], ["inside_debris"], ["inside_cluster", "inside_debris"])
+            assert (c["reasons"] == ["not_voted"]) == (c["votes"] < 2)
+        else:
+            assert c["votes"] >= 2 and not c["near_cluster"] and not c["near_debris"]
+    assert result["counts"]["status"]["not_segmented"] > 0
+    assert sum(result["counts"]["votes"].values()) == len(result["cells"])
+
+
+def test_matches_pipeline_reference(unvoted):
+    result = unvoted
     """Same statuses as the committed reference run (samples/expected, Jetson GPU, PyTorch) for matched cells."""
     from ncmask.consensus import match_boxes
     with open(ROOT / "samples" / "expected" / "fovs" / SAMPLE / "cells.csv") as f:
@@ -152,15 +178,17 @@ def test_consensus_off(client):
     assert r["timings_ms"]["consensus"] == 0 and r["consensus"]["used"] is False
 
 
-def test_clusters_off_same_statuses(client, result):
-    """Detector C never changes measurable / review / excluded (or reasons, flags, det_tag)."""
-    r = client.post("/api/infer?consensus=true&clusters=false", data={"sample": SAMPLE}).json()
+def test_clusters_off_same_statuses(client, unvoted):
+    """Voting off: detector C never changes measurable / review / excluded (or reasons, flags, det_tag)."""
+    result = unvoted
+    r = client.post("/api/infer?consensus=true&clusters=false&vote=false", data={"sample": SAMPLE}).json()
     assert r["clusters"]["used"] is False and r["clusters"]["boxes"] == [] and r["timings_ms"]["clusters"] == 0
     key = lambda cells: [(c["id"], c["box"], c["status"], c["reasons"], c["flags"], c["det_tag"]) for c in cells]
     assert key(r["cells"]) == key(result["cells"])
     assert all(c["near_cluster"] == [] == c["near_debris"] for c in r["cells"])
     assert r["counts"]["clusters"] == {"cluster": 0, "debris": 0}
     assert client.post("/api/infer?clusters=maybe", data={"sample": SAMPLE}).status_code == 422
+    assert client.post("/api/infer?vote=maybe", data={"sample": SAMPLE}).status_code == 422
 
 
 def test_upload_png_other_size_warns_and_is_not_kept(client):
