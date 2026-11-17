@@ -4,9 +4,12 @@ Configured segmenter (config.yaml `seg.weights`, v0.3): `models/seg/v2_1/best.pt
 
 YOLO26l (`models/detector_b/yolo26l_1280_best.pt`, 105,729,697 bytes, SHA256 `703f3e716a5116b98d581497eed6bab62b49181577aeb2062f209cbb230fb72b`) is a GitHub Release asset (`v0.1-models`): `scripts/fetch_release_weights.py`.
 
+Detector C (`models/detector_c/yolo26s_1024_ccd_best.pt`, 20,370,437 bytes, SHA256 `a72ae657980c941447a10430cd399478ae8318c18c4cdc53f35ba6b99df23255`): YOLO26s trained at imgsz 1024 (verified from the checkpoint: `train_args.imgsz` 1024, names `{0: cell, 1: cluster, 2: debris}`, head `end2end` False, Ultralytics 8.4.202, 100 epochs, freeze 10, AdamW, cos_lr). Test mAP50: cell 0.829, cluster 0.503, debris 0.539. The pipeline uses only its cluster and debris classes (conf 0.5), for information only.
+
 | file | bytes | SHA256 |
 |---|---|---|
 | `models/detector/cell_yolo26s_v2_best.pt` | 20300421 | `e85d0419bd6dc984772039196546b10996ba784b88ca43ec2be47056380c1451` |
+| `models/detector_c/yolo26s_1024_ccd_best.pt` | 20370437 | `a72ae657980c941447a10430cd399478ae8318c18c4cdc53f35ba6b99df23255` |
 | `models/seg/V1_v3/best.pt` | 548101 | `8e5a821c63e6b6afa3bf6fee31f8a588c397f9f184a767b8e524e9e173a62be7` |
 | `models/seg/tinyseg_v3/V0/best.pt` | 548101 | `9c409dac72b758659797cc25e9bf5ce1f22e4ba74f25f5fa1b22d969b402365f` |
 | `models/seg/tinyseg_v3/V1/best.pt` | 548101 | `8e5a821c63e6b6afa3bf6fee31f8a588c397f9f184a767b8e524e9e173a62be7` |

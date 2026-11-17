@@ -3,7 +3,9 @@ Stage 0 image QC (flags only) -> Stage 1 detect (YOLO26s; YOLO26l consensus tag)
 cell_at_edge / crop_clamped, box size vs training -> Stage 3 crop (margin, mirror padding) + segment + centre component,
 nucleus within cell -> Stage 4 two layers: FULL per-cell masks (measurement, overlaps allowed) + EXCLUSIVE label map
 (display; higher confidence wins) -> occluded_frac, no cell dropped for overlap -> Stage 5 gate (measurable / review /
-excluded + reasons) -> outputs."""
+excluded + reasons) -> outputs.
+Optional, information only: detector C (cluster / debris boxes) -> per-cell near_cluster / near_debris (the C box ids
+covering >= detector_c.near_frac of the cell's detector box). Computed AFTER the gate and never an input to it."""
 import json
 import logging
 import time
@@ -20,11 +22,18 @@ log = logging.getLogger("ncmask.fov")
 
 CELL_COLS = ["fov", "cell_id", "status", "reasons", "box_x1", "box_y1", "box_x2", "box_y2", "conf", "det_tag", "b_conf",
              "ab_iou", "cell_area_px", "nucleus_area_px", "nc_ratio", "excl_cell_area_px", "excl_nucleus_area_px",
-             "occluded_frac", "flags", "fov_qc", "crop_x0", "crop_y0", "crop_x1", "crop_y1", "clipped_frac"]
+             "occluded_frac", "flags", "fov_qc", "crop_x0", "crop_y0", "crop_x1", "crop_y1", "clipped_frac",
+             "near_cluster", "near_debris", "object"]
+# cells.csv also lists detector-C boxes (object = cluster | debris, cell_id = C1, C2, ...; no status: info only)
+C_OBJECTS = ("cluster", "debris")
+C_BGR = {"cluster": (150, 110, 140), "debris": (90, 130, 160)}   # muted: never confused with the status colours
 STATUS_BGR = {"measurable": (0, 200, 0), "review": (0, 165, 255), "excluded": (0, 0, 255)}
 L_ONLY_COLS = ["fov", "b_conf", "box_x1", "box_y1", "box_x2", "box_y2", "max_iou_with_A"]
 # COCO categories follow the training annotations (instances_default.json)
 CATEGORIES = [{"id": 1, "name": "nucleus-area", "supercategory": ""}, {"id": 2, "name": "cell-area", "supercategory": ""}]
+# detector C boxes (information only), appended when detector C ran
+C_CATEGORIES = [{"id": 3, "name": "cluster", "supercategory": "detector_c"},
+                {"id": 4, "name": "debris", "supercategory": "detector_c"}]
 
 
 def resolve_overlaps(shape, items, drop_lost_frac=None):
@@ -90,8 +99,16 @@ def is_flagged(flags):
     return any(f and f not in INFO_FLAGS for f in flags.split(";"))
 
 
-def draw_overlay(img, rows, cell_lab, nuc_lab, max_side):
+def draw_overlay(img, rows, cell_lab, nuc_lab, max_side, c_boxes=()):
     ov = img.copy()
+    for c in c_boxes:   # under the cells: thin muted outline + label (information only)
+        x1, y1, x2, y2 = (int(round(c[k])) for k in ("box_x1", "box_y1", "box_x2", "box_y2"))
+        col = C_BGR[c["object"]]
+        draw_dashed(ov, np.array([[x1, y1], [x2 - 1, y1], [x2 - 1, y2 - 1], [x1, y2 - 1]]), col, 2, on=6, off=6)
+        txt = f"{c['cell_id']} {c['object']} {c['conf']:.2f}"
+        org = (x1 + 3, min(y2 - 6, max(14, y1 + 16)) if y2 - y1 > 40 else max(14, y1 - 4))
+        cv2.putText(ov, txt, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 3, cv2.LINE_AA)
+        cv2.putText(ov, txt, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
     nuc_any = nuc_lab > 0
     red = np.zeros_like(ov); red[..., 2] = 255
     ov[nuc_any] = (0.55 * ov[nuc_any] + 0.45 * red[nuc_any]).astype(np.uint8)
@@ -140,8 +157,39 @@ def extract_crop(img, box, cfg, seg):
     return np.ascontiguousarray(crop), tuple(float(v) for v in cbox), win, origin, win.edge_sides
 
 
-def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
-    """Returns (rows, coco dict, cell_lab, nuc_lab, overlay or None, info). Raises on internal errors."""
+def run_detector_c(img, fov_id, detector_c):
+    """-> list of C-box records (object = cluster | debris, cell_id C1.. by conf), info."""
+    boxes, conf, cls, cinfo = detector_c.detect(img)
+    recs = []
+    for k, (b, c, n) in enumerate(zip(boxes, conf, cls), 1):
+        name = detector_c.names[int(n)]
+        if name not in C_OBJECTS:          # its cell class is filtered before NMS; never let it through
+            continue
+        recs.append({"fov": fov_id, "cell_id": f"C{len(recs) + 1}", "object": name, "conf": round(float(c), 5),
+                     **{k2: round(float(v), 2) for k2, v in zip(("box_x1", "box_y1", "box_x2", "box_y2"), b)}})
+    cinfo.update({"n_" + o: sum(r["object"] == o for r in recs) for o in C_OBJECTS})
+    return recs, cinfo
+
+
+def near_c(box, c_boxes, frac):
+    """{object: [C ids]} of the C boxes covering >= frac of this cell's detector box."""
+    x1, y1, x2, y2 = box
+    area = max(x2 - x1, 0) * max(y2 - y1, 0)
+    out = {o: [] for o in C_OBJECTS}
+    if area <= 0:
+        return out
+    for c in c_boxes:
+        iw = min(x2, c["box_x2"]) - max(x1, c["box_x1"])
+        ih = min(y2, c["box_y2"]) - max(y1, c["box_y1"])
+        if iw > 0 and ih > 0 and iw * ih / area >= frac:
+            out[c["object"]].append(c["cell_id"])
+    return out
+
+
+def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None, detector_c=None):
+    """Returns (rows, coco dict, cell_lab, nuc_lab, overlay or None, info). Raises on internal errors.
+    detector_c (optional, information only): its boxes go to info['c_boxes'], COCO and the overlay, and every row
+    gets near_cluster / near_debris; statuses, reasons and flags are identical with or without it."""
     t0 = time.perf_counter()
     H, W = img.shape[:2]
     qc_flags, qc_metrics = image_qc(img, cfg["qc"])                       # Stage 0: flag, never skip
@@ -170,6 +218,10 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
                 dropped.append({"reason": "s_only_filtered", "cell_id": "", "conf": round(float(conf[j]), 5),
                                 "box": [round(float(v), 2) for v in boxes[j]], "detail": "no matching detector-B box"})
             boxes, conf, tag, bconf, abiou = boxes[am], conf[am], tag[am], bconf[am], abiou[am]
+    c_boxes, near_frac = [], None
+    if detector_c is not None:
+        c_boxes, dinfo["c"] = run_detector_c(img, fov_id, detector_c)
+        near_frac = float(cfg["detector_c"]["near_frac"])
     t_det = time.perf_counter() - t0
     pp, sc, dc = cfg["postprocess"], cfg["seg"], cfg["detector"]
     if dc["containment_thr"] and len(boxes):
@@ -272,9 +324,13 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
                "flags": ";".join(flags), "fov_qc": ";".join(qc_flags),
                "crop_x0": crop_xy[0], "crop_y0": crop_xy[1], "crop_x1": crop_xy[2], "crop_y1": crop_xy[3],
                "clipped_frac": round(rec.get("clipped_frac", 0.0), 5)}
+        # detector C: after the gate, never an input to it
+        near = near_c(rec["box"], c_boxes, near_frac) if near_frac is not None else {o: [] for o in C_OBJECTS}
+        row.update({"near_cluster": ";".join(near["cluster"]), "near_debris": ";".join(near["debris"]), "object": "cell"})
         rows.append(row)
         fattrs = {"cell_id": cid, "status": status, "reasons": reasons, "conf": row["conf"], "det_tag": rec["det_tag"],
-                  "occluded_frac": row["occluded_frac"], "nc_ratio": row["nc_ratio"]}
+                  "occluded_frac": row["occluded_frac"], "nc_ratio": row["nc_ratio"],
+                  "near_cluster": near["cluster"], "near_debris": near["debris"]}
         if ca:
             anns_full.append({"id": len(anns_full) + 1, "image_id": 1, "category_id": 2, "iscrowd": 0, "area": ca,
                               "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
@@ -287,7 +343,7 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
         attrs = {"cell_id": cid, "conf": row["conf"], "status": status, "reasons": reasons, "flags": flags,
                  "det_box_xyxy": [row[k] for k in ("box_x1", "box_y1", "box_x2", "box_y2")],
                  "occluded_frac": row["occluded_frac"], "det_tag": rec["det_tag"], "b_conf": rec["b_conf"],
-                 "ab_iou": rec["ab_iou"]}
+                 "ab_iou": rec["ab_iou"], "near_cluster": near["cluster"], "near_debris": near["debris"]}
         anns.append({"id": len(anns) + 1, "image_id": 1, "category_id": 2, "iscrowd": 0, "area": ca,
                      "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
                      "segmentation": polygons(cm, (win.x0, win.y0), eps) if ca else [], "attributes": attrs})
@@ -297,9 +353,21 @@ def process_fov(img, fov_id, src_name, detector, seg, cfg, detector_b=None):
                          "bbox": [float(win.x0 + xs.min()), float(win.y0 + ys.min()),
                                   float(xs.max() - xs.min() + 1), float(ys.max() - ys.min() + 1)],
                          "segmentation": polygons(nm, (win.x0, win.y0), eps), "attributes": {"cell_id": cid}})
-    overlay = draw_overlay(img, rows, cell_lab, nuc_lab, cfg["output"]["overlay_max_side"]) \
+    if detector_c is not None:
+        for cc in (coco, coco_full):
+            cc["categories"] = CATEGORIES + C_CATEGORIES
+            cat = {c["name"]: c["id"] for c in C_CATEGORIES}
+            for c in c_boxes:
+                x1, y1, x2, y2 = (c[k] for k in ("box_x1", "box_y1", "box_x2", "box_y2"))
+                cc["annotations"].append({
+                    "id": len(cc["annotations"]) + 1, "image_id": 1, "category_id": cat[c["object"]], "iscrowd": 0,
+                    "area": round((x2 - x1) * (y2 - y1), 2), "bbox": [x1, y1, round(x2 - x1, 2), round(y2 - y1, 2)],
+                    "segmentation": [[x1, y1, x2, y1, x2, y2, x1, y2]],
+                    "attributes": {"c_id": c["cell_id"], "conf": c["conf"], "source": "detector_c", "info_only": True}})
+    overlay = draw_overlay(img, rows, cell_lab, nuc_lab, cfg["output"]["overlay_max_side"], c_boxes) \
         if cfg["output"]["overlay"] else None
     info = {"detector": dinfo, "n_cells": len(rows), "dropped": dropped, "l_only": l_only, "detection_mode": mode,
+            "detector_c_used": detector_c is not None, "c_boxes": c_boxes,
             "fov_qc": qc_flags, "fov_qc_metrics": qc_metrics, "coco_full": coco_full,
             "status_counts": {k: sum(r["status"] == k for r in rows) for k in ("measurable", "review", "excluded")},
             "n_dropped_overlap": len(dropped_ov), "t_detect_s": round(t_det, 4), "t_seg_s": round(t_seg, 4),
@@ -320,7 +388,7 @@ def write_fov_outputs(d, rows, coco, cell_lab, nuc_lab, overlay, meta):
     (d / "cells.coco.json").write_text(json.dumps(coco))                       # exclusive layer (display)
     (d / "cells_full.coco.json").write_text(json.dumps(meta.pop("coco_full")))   # full layer (measurement)
     with open(d / "cells.csv", "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=CELL_COLS); w.writeheader(); w.writerows(rows)
+        w = csv.DictWriter(f, fieldnames=CELL_COLS); w.writeheader(); w.writerows(rows); w.writerows(meta.get("c_boxes", []))
     if meta.get("detection_mode", "single") != "single":
         with open(d / "l_only.csv", "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=L_ONLY_COLS); w.writeheader(); w.writerows(meta.get("l_only", []))

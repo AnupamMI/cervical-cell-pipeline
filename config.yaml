@@ -49,8 +49,20 @@ detector_b:                        # cross-check detector, used only in the cons
   nms_iou: 0.7
   max_det: 300
 
+detector_c:                        # "detector C": cluster / debris detector, INFORMATION ONLY (not validated enough to gate)
+  enabled: true                    # false = never loaded. A missing .pt switches it off (logged), like detector_b
+  weights: models/detector_c/yolo26s_1024_ccd_best.pt   # YOLO26s @1024, classes [cell, cluster, debris] (sha256 a72ae657...)
+  imgsz: 1024
+  conf: 0.5                        # test mAP50 cluster 0.503 / debris 0.539; many background false positives at 0.25
+  nms_iou: 0.7                     # per-class NMS (as Ultralytics predict / val for this checkpoint)
+  max_det: 300
+  classes: [cluster, debris]       # ONLY these classes are used; its `cell` class is ignored (YOLO26s stays the
+                                   # only source of cells)
+  near_frac: 0.5                   # info flag near_cluster / near_debris when >= this share of a cell's detector box
+                                   # lies inside a C box of that class. Never changes measurable / review / excluded
+
 crop:
-  margin: 0.17               # per side, fraction of max(box w, h). = aug_v2.PAD used to build the v2/v2_1 training and
+  margin: 0.17              # per side, fraction of max(box w, h). = aug_v2.PAD used to build the v2/v2_1 training and
                               # eval crops. Measured on the 9,147 raw tinyseg crops: median 0.177 (IQR 0.150-0.197),
                               # see reports/crop_margin.json
   edge_mode: reflect          # reflect = mirror-pad outside the FOV exactly like the training/eval crops

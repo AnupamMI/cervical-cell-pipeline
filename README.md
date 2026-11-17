@@ -8,8 +8,8 @@ available as a config option. Older versions: `git checkout v0.2` (V1 default), 
 ## Web app (FOV demo, branch `app-fov`)
 
 Browser demo for single FOVs: FastAPI + ONNX Runtime backend running this pipeline (`ncmask.fov.process_fov`) with
-ONNX exports of the three models (parity with PyTorch verified on all 10 samples), React frontend with an
-OpenSeadragon viewer. Run locally, API, deploy to a Hugging Face Space and the one-command segmenter swap:
+ONNX exports of the four models (three detectors + the segmenter; parity with PyTorch verified on all 10 samples),
+a calm, minimal React frontend with an OpenSeadragon viewer. Run locally, API, deploy to a Hugging Face Space and the one-command segmenter swap:
 **[`app/README.md`](app/README.md)**.
 
 ## Architecture
@@ -18,6 +18,7 @@ OpenSeadragon viewer. Run locally, API, deploy to a Hugging Face Space and the o
 Stage 0  image QC (blur, exposure, stain range)            -> FOV flags only, never skipped
 Stage 1  YOLO26s cell boxes (conf 0.15)                     -> the only source of candidate cells
          YOLO26l @1280 cross-check (consensus_flag)         -> tag consensus / s_only, never filters (auto-off without weights)
+         detector C: YOLO26s @1024 cluster / debris boxes   -> info only: near_cluster / near_debris tags, after the gate
 Stage 2  containment suppression (0.8, min area ratio 0.4), cell_at_edge (box <= 2 px from the FOV edge),
          crop_clamped (info), box size vs the training distribution
 Stage 3  crop = box + 0.17 margin, mirror padding -> input variant (as trained) -> TinyUNet -> centre component,
@@ -211,6 +212,19 @@ All paths and parameters live here. Relative paths resolve against the config fi
    A nucleus pixel belongs to cell *i* only where the cell label is *i*. A cell losing more than `drop_lost_frac` is
    dropped (see Flags). Before step 1, boxes mostly inside a higher-confidence box are dropped (`containment_thr`).
 
+## Three detectors
+
+| | model | role | affects status? |
+|---|---|---|---|
+| A | YOLO26s @640 (`detector`) | the only source of candidate cells | yes (every cell comes from it) |
+| B | YOLO26l @1280 (`detector_b`) | consensus check: tags each A box `consensus` / `s_only` | only via `s_only_low_conf` (review) |
+| C | YOLO26s @1024 (`detector_c`), classes cell / cluster / debris | uses **only** cluster + debris boxes (conf >= 0.5): info tags `near_cluster` / `near_debris` when >= 50 % of a cell box lies in a C box; boxes listed in cells.csv (`object` = cluster / debris), COCO (categories 3 / 4), done.json and the overlay | **no**: computed after the gate, never an input to it (verified on every sample) |
+
+Detector C (`models/detector_c/yolo26s_1024_ccd_best.pt`, SHA256 `a72ae657…df23255`): 100 epochs, freeze 10,
+AdamW, cos_lr; **test mAP50 cell 0.829, cluster 0.503, debris 0.539**, many background false positives at conf
+0.25, hence conf 0.5 and information only. Its cell class is ignored. Turn it off with `detector_c.enabled: false`;
+a missing .pt switches it off (logged), like YOLO26l.
+
 ## Outputs
 
 ```
@@ -228,7 +242,7 @@ All paths and parameters live here. Relative paths resolve against the config fi
     nucleus_labels.png  uint16 PNG, value = cell_id of the cell the nucleus belongs to
     cells.coco.json     COCO; category 2 "cell-area" (one per detection), 1 "nucleus-area"; polygons in FOV px;
                         attributes: cell_id, conf, flags, det_box_xyxy, overlap_lost_px, clipped_frac (nucleus: cell_id)
-    cells.csv           this FOV's rows
+    cells.csv           this FOV's rows (+ detector-C rows: object = cluster / debris, cell_id C1.., no status)
     done.json           completion marker: source path + SHA256, image info, timings, detector info, dropped boxes/cells
 ```
 
@@ -236,7 +250,9 @@ All paths and parameters live here. Relative paths resolve against the config fi
 crop_x0, crop_y0, crop_x1, crop_y1, overlap_lost_px, clipped_frac, det_tag, b_conf, ab_iou`. `det_tag` = single |
 consensus | s_only; `b_conf` / `ab_iou` = the matched B box's confidence and IoU (empty if none). `clipped_frac` = share of the cell component's
 in-FOV pixels removed by the clip (0 with the default). Areas are the final pixel counts in the label maps (after overlap
-resolution). `flags` are `;`-separated. Cell ids are 1..N per FOV, ordered by confidence (then y, x).
+resolution). `flags` are `;`-separated. Cell ids are 1..N per FOV, ordered by confidence (then y, x). Pipeline v3 also
+writes `status`, `reasons`, the exclusive / full areas and, at the end, `near_cluster`, `near_debris` (detector-C box
+ids, `;`-separated) and `object` (`cell`, or `cluster` / `debris` for detector-C rows).
 
 Each FOV's files are written to `fovs/<id>.tmp/` and renamed into place when complete, so a crash never leaves a
 half-written FOV that looks done.

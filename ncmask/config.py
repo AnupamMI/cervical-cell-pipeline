@@ -20,11 +20,12 @@ REQUIRED = {
     "logging": ["level"],
 }
 PATH_KEYS = [("detector", "weights"), ("seg", "code_dir"), ("seg", "weights"), ("seg", "model_config"),
-             ("detector_b", "weights"), ("seg", "preprocess_code"), ("seg", "preprocessing_dir")]
+             ("detector_b", "weights"), ("detector_c", "weights"), ("seg", "preprocess_code"), ("seg", "preprocessing_dir")]
 V3_SECTIONS = {"qc": ["blur_lapvar_min", "mean_grey_min", "mean_grey_max", "dark_frac_max", "stained_frac_min", "stained_frac_max"],
                "size": ["box_area_min", "box_area_max", "cell_area_review_min", "cell_area_review_max",
                         "cell_area_implausible_min", "cell_area_implausible_max", "nucleus_area_implausible_max"],
                "gate": ["occluded_review", "s_only_review_conf", "nc_implausible_max"]}
+C_CLASSES = ("cluster", "debris")   # detector C classes the pipeline may use (never `cell`)
 MODES = ("single", "consensus_flag", "consensus_filter")
 
 
@@ -71,6 +72,15 @@ def load(path):
             raise ConfigError("consensus modes need a detector_b section with weights, imgsz, conf, nms_iou, max_det")
         if not 0 < db["conf"] < 1 or not 0 < db["nms_iou"] <= 1:
             raise ConfigError("detector_b.conf and detector_b.nms_iou must be in (0, 1]")
+    dcc = cfg.get("detector_c")
+    if dcc is not None:
+        if not isinstance(dcc, dict) or any(k not in dcc for k in ("enabled", "weights", "imgsz", "conf", "nms_iou",
+                                                                    "max_det", "classes", "near_frac")):
+            raise ConfigError("detector_c needs enabled, weights, imgsz, conf, nms_iou, max_det, classes, near_frac")
+        if not 0 < dcc["conf"] < 1 or not 0 < dcc["nms_iou"] <= 1 or not 0 < dcc["near_frac"] <= 1:
+            raise ConfigError("detector_c.conf, nms_iou and near_frac must be in (0, 1]")
+        if not dcc["classes"] or not all(c in C_CLASSES for c in dcc["classes"]):
+            raise ConfigError(f"detector_c.classes: a non-empty subset of {list(C_CLASSES)} (its cell class is never used)")
     for sec, k in PATH_KEYS:
         if sec not in cfg:
             continue
@@ -85,6 +95,9 @@ def load(path):
                                         f"{cfg['consensus']['detection_mode']} -> single. "
                                         "Fetch them with scripts/fetch_release_weights.py")
         cfg["consensus"]["detection_mode"] = "single"
+    if dcc is not None and dcc["enabled"] and not Path(dcc["weights"]).is_file():
+        dcc["auto_off"] = f"detector_c weights not found ({dcc['weights']}); detector C off"
+        dcc["enabled"] = False
     validate(cfg)
     return cfg
 

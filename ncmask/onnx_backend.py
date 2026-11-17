@@ -1,7 +1,7 @@
 """ONNX Runtime backends for the three models: drop-in replacements for ncmask.detect.Detector and
 ncmask.segment.SegModel. torch-free at inference (the web app ships without torch / ultralytics).
 
-  OnnxDetector(Detector)  only `_predict` is new: the Ultralytics predict path for an end-to-end YOLO26 head, re-done
+  OnnxDetector(Detector)  only `_predict` / `_decode` are new: the Ultralytics predict path for an end-to-end YOLO26 head, re-done
                           in numpy: rect LetterBox (auto=True, stride from the export metadata, pad 114, INTER_LINEAR),
                           BGR->RGB, /255 -> ONNX (1, 300, 6) -> conf > thr, [:max_det] -> scale_boxes + clip.
                           Tiling, NMS and ordering are Detector.__call__ itself, unchanged.
@@ -151,6 +151,7 @@ class OnnxDetector(Detector):
         self.dynamic = not all(isinstance(v, int) for v in inp.shape[2:])
         self.input_name = inp.name
         self.device = self.sess.get_providers()[0]
+        self._setup_classes()
 
     def _predict(self, imgs):
         # Ultralytics: auto (rect) letterbox when all images in the batch share a shape and the model is dynamic
@@ -160,26 +161,29 @@ class OnnxDetector(Detector):
             lb = letterbox(img, self.imgsz, self.stride, auto)
             x = (lb[..., ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0)
             pred = self.sess.run(None, {self.input_name: np.ascontiguousarray(x)})[0][0]   # (4 + nc, anchors)
-            boxes, conf = self._nms(pred)
+            boxes, conf, cls = self._decode(pred)
             boxes = scale_boxes(lb.shape[:2], boxes, img.shape[:2])
-            out.append((boxes.reshape(-1, 4), conf))
+            out.append((boxes.reshape(-1, 4), conf, cls))
         return out
 
-    def _nms(self, pred):
-        """ultralytics.utils.nms.non_max_suppression for one image, agnostic, best class only: score = max class
-        prob > conf, xywh -> xyxy, at most max_nms (30000) by score, greedy NMS (torchvision convention: suppress
-        IoU > iou_thr; geometry.nms), first max_det kept."""
-        from . import geometry
+    def _decode(self, pred):
+        """ultralytics.utils.nms.non_max_suppression for one image, best class only (multi_label False): score =
+        max class prob > conf, then the `classes` filter (detector C), xywh -> xyxy, at most max_nms (30000) by
+        score, greedy NMS (torchvision convention: suppress IoU > iou_thr; geometry.nms), agnostic for A / B and
+        within each class for C (Ultralytics offsets boxes by class * 7680), first max_det kept."""
         p = pred.T.astype(np.float64)                       # (anchors, 4 + nc)
-        score = p[:, 4:].max(1)
-        p, score = p[score > self.cfg["conf"]], score[score > self.cfg["conf"]]
+        score, cls = p[:, 4:].max(1), p[:, 4:].argmax(1)
+        ok = score > self.cfg["conf"]
+        if self.class_ids is not None:
+            ok &= np.isin(cls, self.class_ids)
+        p, score, cls = p[ok], score[ok], cls[ok]
         if len(p) > 30000:
             o = np.argsort(-score, kind="stable")[:30000]
-            p, score = p[o], score[o]
+            p, score, cls = p[o], score[o], cls[o]
         xy, wh = p[:, :2], p[:, 2:4] / 2
         boxes = np.concatenate([xy - wh, xy + wh], 1)
-        keep = geometry.nms(boxes, score, self.cfg["nms_iou"])[:int(self.cfg["max_det"])] if len(p) else np.zeros(0, int)
-        return boxes[keep], score[keep]
+        keep = self._nms(boxes, score, cls)[:int(self.cfg["max_det"])]
+        return boxes[keep], score[keep], cls[keep].astype(np.int64)
 
 
 class OnnxSegModel(SegModel):
@@ -207,7 +211,8 @@ class OnnxSegModel(SegModel):
 
 
 # Layout of an ONNX bundle (scripts/export_onnx.py writes it, the web app and the Space read it)
-BUNDLE_FILES = {"detector": "detector_a.onnx", "detector_b": "detector_b.onnx", "seg": "seg/seg.onnx"}
+BUNDLE_FILES = {"detector": "detector_a.onnx", "detector_b": "detector_b.onnx", "detector_c": "detector_c.onnx",
+                "seg": "seg/seg.onnx"}
 
 
 def bundle_manifest(bundle_dir):

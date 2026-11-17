@@ -22,6 +22,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -137,7 +138,8 @@ async def lifespan(app):
     logging.basicConfig(level=os.environ.get("NCMASK_LOG", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     S.engine = eng.Engine()
     S.store = ResultStore(TTL_S)
-    log.info("models loaded (providers %s, consensus %s)", S.engine.providers, S.engine.consensus_available)
+    log.info("models loaded (providers %s, consensus %s, detector C %s)", S.engine.providers,
+             S.engine.consensus_available, S.engine.clusters_available)
     if os.environ.get("NCMASK_WARMUP", "1") == "1":
         threading.Thread(target=_warmup, daemon=True).start()
     yield
@@ -146,6 +148,10 @@ async def lifespan(app):
 
 app = FastAPI(title="Cervical Cell Pipeline (FOV demo)", version=APP_VERSION, lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+
+
+# JS / CSS / the result JSON (polygons) compress 3-5x; tiny responses are left alone
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
 @app.middleware("http")
@@ -209,7 +215,9 @@ def _save_upload(file: UploadFile, dst: Path):
 @app.post("/api/infer")
 def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tiff/.png/.jpg/.jpeg, at most 25 MB"),
           sample: str | None = Form(None, description="instead of a file: the name of a sample from /api/samples"),
-          consensus: bool = Query(True, description="run the YOLO26l consensus check (tag only, never filters)")):
+          consensus: bool = Query(True, description="run the YOLO26l consensus check (tag only, never filters)"),
+          clusters: bool = Query(True, description="run detector C (cluster / debris boxes; information only, "
+                                                   "never changes a cell's status)")):
     if (file is None) == (sample is None):
         return err(400, "bad_request", "send exactly one of: a file, or a sample name")
     if file is not None and Path(file.filename or "").suffix.lower() not in EXTS:
@@ -238,8 +246,10 @@ def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tif
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 tmpdir = None
         t_decode = time.perf_counter() - t0
-        res = S.engine.infer(img, consensus, name=(sample + ".tiff") if sample else "upload")
-        files = {"overlay.png": eng.encode_png(res["overlay"]), "cells.csv": eng.cells_csv(res["rows"]),
+        res = S.engine.infer(img, consensus, name=(sample + ".tiff") if sample else "upload", clusters=clusters)
+        res["clusters_requested"] = clusters
+        files = {"overlay.png": eng.encode_png(res["overlay"]),
+                 "cells.csv": eng.cells_csv(res["rows"], res["info"].get("c_boxes", [])),
                  "coco.json": eng.coco_bytes(res["coco"]), "coco_full.json": eng.coco_bytes(res["coco_full"]),
                  "image.jpg": eng.encode_jpg(img, 90)}
         rid, exp = S.store.put(files)
@@ -247,8 +257,8 @@ def infer(file: UploadFile | None = File(None, description="FOV image: .tif/.tif
         out["timings_ms"]["decode"] = round(1000 * t_decode, 1)
         out["timings_ms"]["request"] = round(1000 * (time.perf_counter() - t0), 1)
         out["source"] = {"sample": sample} if sample else {"upload": True}
-        log.info("result %s: %dx%d, %d cells, consensus %s, %.0f ms", rid[:6], img.shape[1], img.shape[0],
-                 len(out["cells"]), res["consensus_used"], out["timings_ms"]["request"])
+        log.info("result %s: %dx%d, %d cells, consensus %s, clusters %s, %.0f ms", rid[:6], img.shape[1], img.shape[0],
+                 len(out["cells"]), res["consensus_used"], res["clusters_used"], out["timings_ms"]["request"])
         return out
     except Exception:
         log.exception("inference failed")

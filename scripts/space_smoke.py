@@ -52,6 +52,7 @@ def main(argv=None):
     hj = h.json()
     check(h.status_code == 200 and hj["status"] == "ok", "health ok")
     check(hj["bundle_check"] == [], "bundle matches config.yaml")
+    check(hj.get("clusters_available") is True, "detector C loaded")
     check(all(m["onnx_sha256"] == m["onnx_sha256_manifest"] for m in hj["models"].values()), "ONNX SHA256s match manifest")
     rep["health"] = {k: hj[k] for k in ("models", "versions", "providers", "consensus_available", "typical_ms")}
     page = s.get(base + "/", timeout=30)
@@ -70,10 +71,12 @@ def main(argv=None):
             tm = j["timings_ms"]
             rep["runs"].append({"sample": smp["name"], "consensus": cons, "cells": len(j["cells"]),
                                 "status": j["counts"]["status"], "server_ms": tm["request"], "wall_s": round(wall, 2),
-                                "stages_ms": {k: tm[k] for k in ("detect", "consensus", "segment", "gate")}})
+                                "stages_ms": {k: tm.get(k, 0) for k in ("detect", "consensus", "clusters", "segment", "gate")},
+                                "c_boxes": len(j.get("clusters", {}).get("boxes", []))})
             print(f"  {smp['name']} consensus={'on ' if cons else 'off'}  {len(j['cells']):3d} cells  "
                   f"server {tm['request'] / 1000:5.2f}s  wall {wall:5.2f}s  "
-                  f"(detect {tm['detect']:.0f} ms, consensus {tm['consensus']:.0f}, segment {tm['segment']:.0f}, gate {tm['gate']:.0f})",
+                  f"(detect {tm['detect']:.0f} ms, consensus {tm['consensus']:.0f}, clusters {tm.get('clusters', 0):.0f}, "
+                  f"segment {tm['segment']:.0f}, gate {tm['gate']:.0f})",
                   flush=True)
             if smp is samples[0] and cons:
                 for k, url in j["downloads"].items():

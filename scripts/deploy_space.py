@@ -47,7 +47,8 @@ short_description: FOV cell detection, segmentation and quality gate (research d
 
 **Research demo, not for diagnosis.** Upload one Pap-smear field of view (2028 x 1520, TIFF/PNG/JPEG, up to 25 MB):
 YOLO26s detects cells, YOLO26l @1280 cross-checks them (tag only, never filters), a TinyUNet segments each cell and
-its nucleus, and a quality gate marks every mask measurable / review / excluded.
+its nucleus, and a quality gate marks every mask measurable / review / excluded. Detector C (YOLO26s @1024) outlines
+clusters and debris for information only: it never changes a cell's status.
 
 Uploads are deleted right after decoding; results (overlay, cells.csv, COCO) are deleted after 15 minutes.
 API docs: `/api/docs`. Source of truth: the `app-fov` branch of the cervical-cell-pipeline repository; this Space is
@@ -76,7 +77,8 @@ def check_bundle():
         raise SystemExit("no ONNX bundle: run python scripts/export_onnx.py first")
     man = json.loads(man_p.read_text())
     cfg = cfgmod.load(HERE / "config.yaml")
-    secs = ["detector", "seg"] + (["detector_b"] if cfg["consensus"]["detection_mode"] != "single" else [])
+    secs = ["detector", "seg"] + (["detector_b"] if cfg["consensus"]["detection_mode"] != "single" else []) + \
+        (["detector_c"] if (cfg.get("detector_c") or {}).get("enabled") else [])
     for sec in secs:
         m = man["models"].get(sec)
         if m is None:

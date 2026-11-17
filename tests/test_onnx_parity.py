@@ -21,7 +21,9 @@ def test_bundle_matches_config():
     from ncmask import config as cfgmod
     cfg = cfgmod.load(ROOT / "config.yaml")
     man = json.loads((BUNDLE / "manifest.json").read_text())
-    for sec in ("detector", "seg") + (("detector_b",) if cfg["consensus"]["detection_mode"] != "single" else ()):
+    secs = ("detector", "seg") + (("detector_b",) if cfg["consensus"]["detection_mode"] != "single" else ()) + \
+        (("detector_c",) if (cfg.get("detector_c") or {}).get("enabled") else ())
+    for sec in secs:
         h = hashlib.sha256(Path(cfg[sec]["weights"]).read_bytes()).hexdigest()
         assert man["models"][sec]["source_sha256"] == h, f"{sec}: bundle is stale; run scripts/export_onnx.py"
 

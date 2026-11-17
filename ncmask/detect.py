@@ -1,4 +1,7 @@
-"""YOLO26 cell detector: full-frame or tiled inference, then class-agnostic NMS.
+"""YOLO26 detectors: full-frame or tiled inference, then NMS.
+
+Detector A / B (cells): class-agnostic NMS. Detector C (cluster / debris, information only): per-class NMS and only
+the classes named in detector_c.classes (its `cell` class is dropped before NMS, as Ultralytics' `classes=` does).
 
 Images are passed to Ultralytics as BGR uint8 numpy arrays (Ultralytics' convention for numpy input; it converts
 to RGB internally, as for its own cv2-loaded training images).
@@ -41,16 +44,42 @@ class Detector:
             log.warning("detector.imgsz=%s differs from the training imgsz %s", self.imgsz, ta["imgsz"])
         self.names = dict(self.model.names)
         self.device = 0 if device == "cuda" else "cpu"
+        self._setup_classes()
+
+    def _setup_classes(self):
+        """detector_c: classes (names) -> ids of this checkpoint; per-class NMS. A / B: all classes, agnostic."""
+        want = self.cfg.get("classes")
+        self.agnostic = want is None
+        if want is None:
+            self.class_ids = None
+            return
+        inv = {v: int(k) for k, v in self.names.items()}
+        missing = [c for c in want if c not in inv]
+        if missing:
+            raise ValueError(f"{self.cfg['weights']}: classes {missing} not in the checkpoint (has {self.names})")
+        self.class_ids = sorted(inv[c] for c in want)
 
     def _predict(self, imgs):
+        """-> list of (boxes (N,4) xyxy, conf (N,), cls (N,) int) per image."""
         res = self.model.predict(imgs, imgsz=self.imgsz, conf=self.cfg["conf"], iou=self.cfg["nms_iou"],
                                  max_det=int(self.cfg["max_det"]), device=self.device,
-                                 agnostic_nms=True, verbose=False)
+                                 agnostic_nms=self.agnostic, classes=self.class_ids, verbose=False)
         out = []
         for r in res:
             b = r.boxes
-            out.append((b.xyxy.cpu().numpy().astype(np.float64).reshape(-1, 4), b.conf.cpu().numpy().astype(np.float64)))
+            out.append((b.xyxy.cpu().numpy().astype(np.float64).reshape(-1, 4), b.conf.cpu().numpy().astype(np.float64),
+                        b.cls.cpu().numpy().astype(np.int64).reshape(-1)))
         return out
+
+    def _nms(self, boxes, conf, cls):
+        """Indices kept, highest conf first: agnostic (A / B) or within each class (C)."""
+        if not len(boxes):
+            return np.zeros(0, int)
+        if self.agnostic:
+            return geometry.nms(boxes, conf, self.cfg["nms_iou"])
+        keep = np.concatenate([np.where(cls == c)[0][geometry.nms(boxes[cls == c], conf[cls == c], self.cfg["nms_iou"])]
+                               for c in np.unique(cls)])
+        return keep[np.argsort(-conf[keep], kind="stable")]
 
     def use_tiling(self, W, H):
         t = self.cfg["tiling"]
@@ -62,31 +91,37 @@ class Detector:
 
     def __call__(self, img):
         """img BGR uint8 -> (boxes (N,4) float FOV px xyxy, conf (N,), info dict). Sorted by conf desc, then y, x."""
+        boxes, conf, _, info = self.detect(img)
+        return boxes, conf, info
+
+    def detect(self, img):
+        """As __call__, plus the class id of every box: (boxes, conf, cls, info)."""
         H, W = img.shape[:2]
         tiled = self.use_tiling(W, H)
         if not tiled:
-            boxes, conf = self._predict([img])[0]
+            boxes, conf, cls = self._predict([img])[0]
             n_raw = len(boxes)
         else:
             t = self.cfg["tiling"]
             tl = geometry.tiles(W, H, int(t["tile_px"]), int(t["overlap_px"]))
             res = self._predict([np.ascontiguousarray(img[y0:y1, x0:x1]) for x0, y0, x1, y1 in tl])
-            bs, cs = [], []
+            bs, cs, ks = [], [], []
             e = t["edge_px"]
-            for (x0, y0, x1, y1), (b, c) in zip(tl, res):
+            for (x0, y0, x1, y1), (b, c, k) in zip(tl, res):
                 if len(b) == 0:
                     continue
                 # a box touching an inner tile edge is a cut cell: the overlapping tile sees it whole
                 inner = ((b[:, 0] <= e) & (x0 > 0)) | ((b[:, 1] <= e) & (y0 > 0)) | \
                         ((b[:, 2] >= (x1 - x0) - e) & (x1 < W)) | ((b[:, 3] >= (y1 - y0) - e) & (y1 < H))
-                b, c = b[~inner] + (x0, y0, x0, y0), c[~inner]
-                bs.append(b); cs.append(c)
+                b, c, k = b[~inner] + (x0, y0, x0, y0), c[~inner], k[~inner]
+                bs.append(b); cs.append(c); ks.append(k)
             boxes = np.concatenate(bs) if bs else np.zeros((0, 4))
             conf = np.concatenate(cs) if cs else np.zeros(0)
+            cls = np.concatenate(ks) if ks else np.zeros(0, np.int64)
             n_raw = len(boxes)
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, W)
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, H)
-        keep = geometry.nms(boxes, conf, self.cfg["nms_iou"]) if len(boxes) else np.zeros(0, int)
-        boxes, conf = boxes[keep], conf[keep]
+        keep = self._nms(boxes, conf, cls)
+        boxes, conf, cls = boxes[keep], conf[keep], cls[keep]
         order = np.lexsort((boxes[:, 0], boxes[:, 1], -conf)) if len(boxes) else np.zeros(0, int)
-        return boxes[order], conf[order], {"tiled": tiled, "n_raw": int(n_raw), "n_after_nms": int(len(boxes))}
+        return boxes[order], conf[order], cls[order], {"tiled": tiled, "n_raw": int(n_raw), "n_after_nms": int(len(boxes))}

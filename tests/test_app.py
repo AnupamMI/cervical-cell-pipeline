@@ -19,7 +19,8 @@ pytestmark = [pytest.mark.skipif(bool(need), reason=f"needs {need}"),
 
 SAMPLE = "cervical_0001"
 CELL_KEYS = {"id", "box", "conf", "det_tag", "b_conf", "ab_iou", "status", "reasons", "flags", "cell_area_px",
-             "nucleus_area_px", "nc_ratio", "occluded_frac", "cell_polygons", "nucleus_polygons"}
+             "nucleus_area_px", "nc_ratio", "occluded_frac", "cell_polygons", "nucleus_polygons", "near_cluster",
+             "near_debris"}
 
 
 @pytest.fixture(scope="module")
@@ -55,6 +56,10 @@ def test_health(client):
     assert h["versions"]["onnxruntime"] and h["providers"]
     assert h["bundle_check"] == []
     assert h["max_upload_bytes"] == 25 * 1024 * 1024 and h["result_ttl_s"] == 900
+    c = h["models"]["detector_c"]
+    assert h["clusters_available"] is True and c["imgsz"] == 1024 and c["conf"] == 0.5
+    assert c["names"] == {"0": "cell", "1": "cluster", "2": "debris"} and c["classes_used"] == ["cluster", "debris"]
+    assert c["source_sha256"] == "a72ae657980c941447a10430cd399478ae8318c18c4cdc53f35ba6b99df23255"
 
 
 def test_samples(client):
@@ -66,7 +71,8 @@ def test_samples(client):
 
 def test_infer_schema(result):
     r = result
-    assert {"id", "size", "image_qc", "cells", "counts", "timings_ms", "consensus", "warnings", "downloads"} <= set(r)
+    assert {"id", "size", "image_qc", "cells", "counts", "timings_ms", "consensus", "clusters", "warnings",
+            "downloads"} <= set(r)
     assert r["size"] == {"width": 2028, "height": 1520, "expected": [2028, 1520], "is_expected": True}
     assert r["warnings"] == []
     assert set(r["image_qc"]) == {"ok", "flags", "metrics"}
@@ -86,6 +92,21 @@ def test_infer_schema(result):
     assert r["counts"]["reasons"] == {k: v for k, v in r["counts"]["reasons"].items() if v > 0}
     assert set(r["timings_ms"]) >= {"detect", "consensus", "segment", "gate", "total", "decode", "request"}
     assert r["timings_ms"]["consensus"] > 0 and r["consensus"]["used"] is True
+    # detector C: information only
+    cl = r["clusters"]
+    assert cl["used"] is True and cl["info_only"] is True and r["timings_ms"]["clusters"] > 0
+    assert cl["boxes"] and {b["class"] for b in cl["boxes"]} <= {"cluster", "debris"}
+    assert all(b["conf"] >= 0.5 and b["id"].startswith("C") for b in cl["boxes"])
+    assert r["counts"]["clusters"] == {k: sum(b["class"] == k for b in cl["boxes"]) for k in ("cluster", "debris")}
+    ids = {b["id"] for b in cl["boxes"]}
+    assert all(set(c["near_cluster"]) | set(c["near_debris"]) <= ids for c in r["cells"])
+    for c in r["cells"]:   # near_* = >= 50 % of the cell box inside a C box of that class
+        x1, y1, x2, y2 = c["box"]
+        for k in ("cluster", "debris"):
+            want = [b["id"] for b in cl["boxes"] if b["class"] == k and
+                    max(0, min(x2, b["box"][2]) - max(x1, b["box"][0])) *
+                    max(0, min(y2, b["box"][3]) - max(y1, b["box"][1])) / ((x2 - x1) * (y2 - y1)) >= 0.5]
+            assert c["near_" + k] == want
 
 
 def test_matches_pipeline_reference(result):
@@ -108,9 +129,15 @@ def test_downloads(client, result):
     assert ov.status_code == 200 and ov.content[:8] == b"\x89PNG\r\n\x1a\n" and "attachment" in ov.headers["content-disposition"]
     rows = list(csv.DictReader(io.StringIO(client.get(d["cells.csv"]).text)))
     from ncmask.fov import CELL_COLS
-    assert list(rows[0]) == CELL_COLS and len(rows) == len(result["cells"])
+    assert list(rows[0]) == CELL_COLS
+    assert sum(r["object"] == "cell" for r in rows) == len(result["cells"])
+    crow = [r for r in rows if r["object"] != "cell"]
+    assert [r["cell_id"] for r in crow] == [b["id"] for b in result["clusters"]["boxes"]]
+    assert all(r["status"] == "" for r in crow)
     coco = client.get(d["coco.json"]).json()
-    assert {c["name"] for c in coco["categories"]} == {"cell-area", "nucleus-area"}
+    assert {c["name"] for c in coco["categories"]} == {"cell-area", "nucleus-area", "cluster", "debris"}
+    cann = [a for a in coco["annotations"] if a["category_id"] in (3, 4)]
+    assert len(cann) == len(result["clusters"]["boxes"]) and all(a["attributes"]["info_only"] for a in cann)
     assert coco["images"][0]["width"] == 2028
     full = client.get(d["coco.json"] + "?layer=full").json()
     assert "FULL" in full["info"]["description"]
@@ -123,6 +150,17 @@ def test_consensus_off(client):
     r = client.post("/api/infer?consensus=false", data={"sample": SAMPLE}).json()
     assert {c["det_tag"] for c in r["cells"]} == {"single"}
     assert r["timings_ms"]["consensus"] == 0 and r["consensus"]["used"] is False
+
+
+def test_clusters_off_same_statuses(client, result):
+    """Detector C never changes measurable / review / excluded (or reasons, flags, det_tag)."""
+    r = client.post("/api/infer?consensus=true&clusters=false", data={"sample": SAMPLE}).json()
+    assert r["clusters"]["used"] is False and r["clusters"]["boxes"] == [] and r["timings_ms"]["clusters"] == 0
+    key = lambda cells: [(c["id"], c["box"], c["status"], c["reasons"], c["flags"], c["det_tag"]) for c in cells]
+    assert key(r["cells"]) == key(result["cells"])
+    assert all(c["near_cluster"] == [] == c["near_debris"] for c in r["cells"])
+    assert r["counts"]["clusters"] == {"cluster": 0, "debris": 0}
+    assert client.post("/api/infer?clusters=maybe", data={"sample": SAMPLE}).status_code == 422
 
 
 def test_upload_png_other_size_warns_and_is_not_kept(client):

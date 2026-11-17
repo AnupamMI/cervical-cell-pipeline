@@ -130,6 +130,7 @@ def test_run_consensus_flag_writes_tags_and_l_only(tmp_path, cfg):
     assert len(m["models"]["detector_b"]["sha256"]) == 64 and m["models"]["detector_b"]["imgsz"] == 1280
     import pandas as pd
     cells = pd.read_csv(tmp_path / "out" / "cells.csv")
+    cells = cells[cells["object"] == "cell"]     # detector-C rows (cluster / debris) are listed too
     assert set(cells["det_tag"]) <= {"consensus", "s_only"} and len(cells) > 0
     assert sum(m["counts"]["det_tags_this_run"].values()) == len(cells)
     lo = (tmp_path / "out" / "l_only.csv").read_text().splitlines()

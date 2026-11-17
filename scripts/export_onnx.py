@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Export the models named in config.yaml to an ONNX bundle (default models/onnx/, gitignored):
 
-    models/onnx/detector_a.onnx    YOLO26s       (detector.weights)    dynamic H/W, end-to-end head (1, 300, 6)
+    models/onnx/detector_a.onnx    YOLO26s       (detector.weights)    dynamic H/W, the head PyTorch runs for these
+                                                                       checkpoints (end2end False: raw (1, 4 + nc,
+                                                                       anchors), NMS in ncmask.onnx_backend)
     models/onnx/detector_b.onnx    YOLO26l @1280 (detector_b.weights)  same; skipped if the .pt is absent
+    models/onnx/detector_c.onnx    YOLO26s @1024 (detector_c.weights)  same (3 classes); skipped if detector C is off
     models/onnx/seg/seg.onnx       TinyUNet      (seg.weights)         dynamic batch, sigmoid included
     models/onnx/seg/config.json    in_ch / size / variant (explicit, also for legacy models without one)
     models/onnx/seg/<stain_ref.json | h_stats.json>   preprocessing files the variant needs
@@ -104,15 +107,24 @@ def main(argv=None):
     man = json.loads((out / "manifest.json").read_text()) if (out / "manifest.json").is_file() else {}
     man.setdefault("models", {})
     if a.only in ("all", "detectors"):
-        for sec in ("detector", "detector_b"):
-            if sec == "detector_b" and cfg["consensus"].get("auto_off"):
-                print(f"skip detector_b: {cfg['consensus']['auto_off']}")
+        for sec in ("detector", "detector_b", "detector_c"):
+            off = (cfg["consensus"].get("auto_off") if sec == "detector_b" else
+                   None if sec == "detector" or (cfg.get("detector_c") or {}).get("enabled") else
+                   (cfg.get("detector_c") or {}).get("auto_off", "detector_c.enabled is false or no detector_c section"))
+            if off:
+                print(f"skip {sec}: {off}")
                 man["models"].pop(sec, None)
                 (out / BUNDLE_FILES[sec]).unlink(missing_ok=True)
                 continue
             w = cfg[sec]["weights"]
             print(f"export {sec}: {rel(w)} (imgsz {cfg[sec]['imgsz']}) ...")
             info = export_yolo(w, cfg[sec]["imgsz"], out / BUNDLE_FILES[sec])
+            import onnxruntime as _ort
+            from ncmask.onnx_backend import onnx_metadata
+            meta = onnx_metadata(_ort.InferenceSession(str(out / BUNDLE_FILES[sec]), providers=["CPUExecutionProvider"]))
+            if meta.get("end2end", False):   # the end-to-end head trap: a different decoder than PyTorch runs
+                raise SystemExit(f"{sec}: exported an end-to-end head; PyTorch runs end2end False for this checkpoint")
+            info["end2end"] = False
             man["models"][sec] = {"onnx": BUNDLE_FILES[sec], "source": rel(w), "source_sha256": sha256(w), **info}
     if a.only in ("all", "seg"):
         w = cfg["seg"]["weights"]

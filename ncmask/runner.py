@@ -156,6 +156,13 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
     detector = Detector(cfg, device)
     mode = cfg["consensus"]["detection_mode"]
     detector_b = Detector(cfg, device, "detector_b") if mode != "single" else None
+    dcc = cfg.get("detector_c") or {}
+    detector_c = Detector(cfg, device, "detector_c") if dcc.get("enabled") else None
+    if dcc.get("auto_off"):
+        log.warning("detector C auto-off: %s", dcc["auto_off"])
+    if detector_c is not None:
+        log.info("detector C (information only): %s imgsz=%d conf=%s classes=%s near_frac=%s", dcc["weights"],
+                 detector_c.imgsz, dcc["conf"], dcc["classes"], dcc["near_frac"])
     seg = SegModel(cfg, device)
     log.info("device=%s  detector imgsz=%d conf=%s tiling=%s  seg in_ch=%d size=%d  crop margin=%s edge_mode=%s",
              device, detector.imgsz, cfg["detector"]["conf"], cfg["detector"]["tiling"]["mode"], seg.in_ch, seg.size,
@@ -180,6 +187,9 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
     if detector_b is not None:
         models["detector_b"] = {"path": cfg["detector_b"]["weights"], "sha256": sha256(cfg["detector_b"]["weights"]),
                                 "names": detector_b.names, "imgsz": detector_b.imgsz}
+    if detector_c is not None:
+        models["detector_c"] = {"path": dcc["weights"], "sha256": sha256(dcc["weights"]), "names": detector_c.names,
+                                "imgsz": detector_c.imgsz, "classes_used": dcc["classes"], "info_only": True}
     manifest = {"status": "running", "started_utc": started, "input": str(inp), "output": str(out),
                 "config_hash": chash, "config": cfg, "models": models, "versions": versions(), "device": device}
     prev.write_text(json.dumps(manifest, indent=1, default=str))
@@ -201,7 +211,7 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
                 log.warning("[%d/%d] %s: grayscale image (%s); the detector and seg models are colour-trained, "
                             "expect fewer / poorer cells", k, len(fovs), fid,
                             f"{iinfo['src_channels']}-channel file" if iinfo["src_channels"] < 3 else "R=G=B")
-            rows, coco, cl, nl, ovl, info = process_fov(img, fid, path.name, detector, seg, cfg, detector_b)
+            rows, coco, cl, nl, ovl, info = process_fov(img, fid, path.name, detector, seg, cfg, detector_b, detector_c)
             if tmp.exists():
                 shutil.rmtree(tmp)
             tmp.mkdir(parents=True)
@@ -247,7 +257,8 @@ def run(input_dir, output_dir, config_path, limit=0, overwrite=False):
             if (out / "fovs" / fid / "done.json").exists() and p.exists():
                 with open(p, newline="") as g:
                     for r in csv.DictReader(g):
-                        w.writerow(r); all_rows += 1
+                        w.writerow(r)
+                        all_rows += r.get("object", "cell") == "cell"   # detector-C rows are not cells
     # run-level l_only.csv (detector-B boxes with no detector-A partner; never segmented)
     n_l_csv = 0
     if mode != "single":

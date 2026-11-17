@@ -1,0 +1,65 @@
+{
+ "cpu": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+ "cores": 12,
+ "threads": "default",
+ "n_fovs": 10,
+ "repeat": 1,
+ "combos": {
+  "all_on": {
+   "consensus": true,
+   "clusters": true,
+   "median_s": 3.67,
+   "mean_s": 4.23,
+   "max_s": 7.04,
+   "stage_median_ms": {
+    "detect": 90,
+    "consensus": 1578,
+    "clusters": 287,
+    "segment": 757,
+    "gate": 952
+   }
+  },
+  "consensus_off": {
+   "consensus": false,
+   "clusters": true,
+   "median_s": 2.47,
+   "mean_s": 2.5,
+   "max_s": 2.88,
+   "stage_median_ms": {
+    "detect": 115,
+    "consensus": 0,
+    "clusters": 361,
+    "segment": 742,
+    "gate": 1242
+   }
+  },
+  "clusters_off": {
+   "consensus": true,
+   "clusters": false,
+   "median_s": 3.77,
+   "mean_s": 3.79,
+   "max_s": 4.22,
+   "stage_median_ms": {
+    "detect": 106,
+    "consensus": 1894,
+    "clusters": 0,
+    "segment": 684,
+    "gate": 1029
+   }
+  },
+  "both_off": {
+   "consensus": false,
+   "clusters": false,
+   "median_s": 1.78,
+   "mean_s": 1.81,
+   "max_s": 2.02,
+   "stage_median_ms": {
+    "detect": 104,
+    "consensus": 0,
+    "clusters": 0,
+    "segment": 681,
+    "gate": 988
+   }
+  }
+ }
+}

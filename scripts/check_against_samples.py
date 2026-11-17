@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def rows(p):
     with open(p, newline="") as f:
-        return list(csv.DictReader(f))
+        return [r for r in csv.DictReader(f) if r.get("object", "cell") == "cell"]   # skip detector-C rows
 
 
 def iou(a, b):

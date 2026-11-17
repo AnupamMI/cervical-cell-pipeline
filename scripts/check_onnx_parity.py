@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """ONNX bundle vs PyTorch, full pipeline (ncmask.fov.process_fov) on every FOV in samples/:
 
-  boxes      detector A and B separately: same count, one-to-one Hungarian match, every pair IoU >= 0.99
+  boxes      detector A, B and C separately: same count, one-to-one Hungarian match, every pair IoU >= 0.99
+             (C: cluster / debris only, and every matched pair has the same class)
   cells      same number of cells, every cell matched (box IoU >= 0.99), same det_tag
   masks      Dice >= 0.999 per FOV (pooled cell and nucleus foreground) and per cell (cell mask; nucleus Dice per
              cell is reported, and must be >= 0.99 where either nucleus has >= 50 px)
-  gate       identical status for every matched cell (reasons compared and reported too)
+  gate       identical status for every matched cell (reasons compared and reported too), identical
+             near_cluster / near_debris, and (PyTorch) identical statuses with detector C on and off
 
     python scripts/check_onnx_parity.py [--samples samples] [--bundle models/onnx] [--limit N] [--json out.json]
 
@@ -39,20 +41,32 @@ def match(a, b, thr):
 def compare_fov(img, fid, pt, ox, cfg, ocfg):
     from ncmask.fov import process_fov
     res = {"fov": fid, "fail": []}
-    for sec in ("detector", "detector_b"):
-        if pt[sec] is None:
+    for sec in ("detector", "detector_b", "detector_c"):
+        if pt.get(sec) is None:
             continue
-        (b1, c1, _), (b2, c2, _) = pt[sec](img), ox[sec](img)
+        (b1, c1, k1, _), (b2, c2, k2, _) = pt[sec].detect(img), ox[sec].detect(img)
         pairs, ok = match(b1, b2, BOX_IOU)
         res[sec] = {"n_pt": len(b1), "n_onnx": len(b2), "min_iou": round(min((p[2] for p in pairs), default=1.0), 6)}
         if len(b1) != len(b2) or not ok:
             res["fail"].append(f"{sec}: {len(b1)} vs {len(b2)} boxes or a pair IoU < {BOX_IOU}")
+        if any(k1[i] != k2[j] for i, j, _ in pairs):
+            res["fail"].append(f"{sec}: a matched pair has different classes")
+        if sec == "detector_c":
+            res[sec]["classes_pt"] = sorted({pt[sec].names[int(k)] for k in k1})
     t = time.perf_counter()
-    r1, _, cl1, nl1, _, i1 = process_fov(img, fid, fid, pt["detector"], pt["seg"], cfg, pt["detector_b"])
+    r1, _, cl1, nl1, _, i1 = process_fov(img, fid, fid, pt["detector"], pt["seg"], cfg, pt["detector_b"], pt.get("detector_c"))
     res["t_pt_s"] = round(time.perf_counter() - t, 2)
     t = time.perf_counter()
-    r2, _, cl2, nl2, _, i2 = process_fov(img, fid, fid, ox["detector"], ox["seg"], ocfg, ox["detector_b"])
+    r2, _, cl2, nl2, _, i2 = process_fov(img, fid, fid, ox["detector"], ox["seg"], ocfg, ox["detector_b"], ox.get("detector_c"))
     res["t_onnx_s"] = round(time.perf_counter() - t, 2)
+    if pt.get("detector_c") is not None:
+        # detector C is information only: the gate must not see it (statuses / reasons / flags identical without it)
+        r0 = process_fov(img, fid, fid, pt["detector"], pt["seg"], cfg, pt["detector_b"])[0]
+        key = lambda rows: [(r["cell_id"], r["status"], r["reasons"], r["flags"]) for r in rows]
+        res["c_changes_gate"] = key(r0) != key(r1)
+        if res["c_changes_gate"]:
+            res["fail"].append("detector C changed a status / reason / flag")
+        res["c_boxes"] = {"n_pt": len(i1["c_boxes"]), "n_onnx": len(i2["c_boxes"])}
     box = lambda rows: [[r[k] for k in ("box_x1", "box_y1", "box_x2", "box_y2")] for r in rows]
     pairs, ok = match(box(r1), box(r2), BOX_IOU)
     res["cells"] = {"n_pt": len(r1), "n_onnx": len(r2)}
@@ -77,6 +91,8 @@ def compare_fov(img, fid, pt, ox, cfg, ocfg):
             rs_diff.append((a["cell_id"], a["reasons"], b["reasons"]))
         if a["det_tag"] != b["det_tag"]:
             tag_diff.append((a["cell_id"], a["det_tag"], b["det_tag"]))
+        if (a["near_cluster"] != "") != (b["near_cluster"] != "") or (a["near_debris"] != "") != (b["near_debris"] != ""):
+            res["fail"].append(f"cell {a['cell_id']}: near_cluster / near_debris differ")
     res["min_dice_cell"] = round(min(dc, default=1.0), 6)
     res["min_dice_nucleus"] = round(min(dn, default=1.0), 6)
     if res["min_dice_cell"] < DICE_CELL:
@@ -100,10 +116,13 @@ def load_models(config, bundle):
         raise SystemExit(f"detection_mode differs: PyTorch {cfg['consensus']['detection_mode']} vs bundle "
                          f"{ocfg['consensus']['detection_mode']} (detector_b missing on one side?)")
     cons = cfg["consensus"]["detection_mode"] != "single"
+    use_c = bool((cfg.get("detector_c") or {}).get("enabled"))
+    if use_c != bool((ocfg.get("detector_c") or {}).get("enabled")):
+        raise SystemExit("detector C is on in config.yaml but not in the bundle (or vice versa): re-run scripts/export_onnx.py")
     pt = {"detector": Detector(cfg, "cpu"), "detector_b": Detector(cfg, "cpu", "detector_b") if cons else None,
-          "seg": SegModel(cfg, "cpu")}
+          "detector_c": Detector(cfg, "cpu", "detector_c") if use_c else None, "seg": SegModel(cfg, "cpu")}
     ox = {"detector": OnnxDetector(ocfg, "cpu"), "detector_b": OnnxDetector(ocfg, "cpu", "detector_b") if cons else None,
-          "seg": OnnxSegModel(ocfg, "cpu")}
+          "detector_c": OnnxDetector(ocfg, "cpu", "detector_c") if use_c else None, "seg": OnnxSegModel(ocfg, "cpu")}
     return cfg, ocfg, pt, ox
 
 
@@ -123,12 +142,14 @@ def run(samples, bundle, config, limit=0):
         out.append(r)
         print(f"{p.stem}: cells {r['cells']['n_pt']}/{r['cells']['n_onnx']}  "
               f"A {r['detector']['min_iou']:.6f}" + (f"  B {r['detector_b']['min_iou']:.6f}" if "detector_b" in r else "") +
+              (f"  C {r['detector_c']['n_pt']}/{r['detector_c']['n_onnx']} {r['detector_c']['min_iou']:.6f}" if "detector_c" in r else "") +
               f"  Dice fov {r['dice_cell_fov']:.6f}/{r['dice_nuc_fov']:.6f}  min cell {r['min_dice_cell']:.6f}"
               f"  min nuc {r['min_dice_nucleus']:.6f}  status diffs {len(r['status_diff'])}"
               f"  t pt {r['t_pt_s']}s onnx {r['t_onnx_s']}s  {'FAIL ' + '; '.join(r['fail']) if r['fail'] else 'ok'}",
               flush=True)
     return {"bundle_models": {k: {"source": v["source"], "onnx_sha256": v["onnx_sha256"]} for k, v in man["models"].items()},
-            "detection_mode": cfg["consensus"]["detection_mode"], "thresholds": {
+            "detection_mode": cfg["consensus"]["detection_mode"],
+            "detector_c": bool((cfg.get("detector_c") or {}).get("enabled")), "thresholds": {
                 "box_iou": BOX_IOU, "dice_fov": DICE_FOV, "dice_cell": DICE_CELL, "dice_nucleus_cell": DICE_NUC_CELL},
             "fovs": out, "passed": all(not r["fail"] for r in out) and bool(out)}
 

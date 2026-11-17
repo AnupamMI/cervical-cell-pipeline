@@ -79,7 +79,9 @@ def test_full_run_zero_detections_corrupt_and_outputs(inputs, tmp_path):
     assert cl.dtype == np.uint16 and cl.shape == (1100, 1500) and cl.max() >= 1
     assert (nl[nl > 0] == cl[nl > 0]).all()
     coco = json.loads((f / "cells.coco.json").read_text())
-    rows = (f / "cells.csv").read_text().strip().splitlines()[1:]
+    import csv
+    with open(f / "cells.csv", newline="") as fh:
+        rows = [r for r in csv.DictReader(fh) if r["object"] == "cell"]
     assert len([a for a in coco["annotations"] if a["category_id"] == 2]) == len(rows)
     for a in coco["annotations"]:
         if a["category_id"] == 2 and a["area"]:
