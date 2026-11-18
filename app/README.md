@@ -171,10 +171,12 @@ together with their dependencies (`three`, `@react-three/*`, `@shadergradient/re
   status tint + nucleus fill) · Boxes (off; detector boxes of segmented cells) · Skipped (on, with a count; thin
   dashed white boxes of not-segmented cells) · Clusters & debris (on; dotted slate-blue / umber boxes, labels such as
   "Cluster 0.89" appear once zoomed in) · Flagged only. YOLO26l, Detector C and Confirm are switches (they re-run the
-  image); zoom − / + / fit. The legend lists only what is shown.
-- **Side panel:** status tiles (Measurable / Review / Excluded / Not segmented), "How cells were filtered" (a bar per
+  image); zoom − / + / fit. The legend lists only what is shown. Hovering a cell (mouse) shows a tooltip with its
+  number, status and first reason; J / K step through the cells (zooming to each), Esc clears the selection.
+- **Side panel:** status tiles (Measurable / Review / Excluded / Not segmented; click one to show only those cells
+  in the image and the table), the selected cell (close-up crop with its outline, then its details), "How cells were filtered" (a bar per
   cascade step: YOLO26s found → Detector C confirmed → YOLO26l confirmed → Segmented → Measurable), clusters & debris
-  counts, image-check warnings, top reasons, selected-cell details (votes, found by, areas, N:C), the sortable cell
+  counts, image-check warnings, top reasons, the sortable cell
   table with a Votes column (select a row to zoom), downloads as quiet secondary buttons, stage timings.
 - **Status colours** stay distinct from the accent and from detector C: text green `#1B7A36` / orange `#A34A00` /
   red `#C0261C` on light tints (all >= 5:1); on the image, brighter strokes `#2FBF4F` / `#FF9500` / `#FF3B30`. Every

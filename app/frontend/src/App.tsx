@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, getHealth, getSamples, infer, type Health, type Options, type Result, type Sample, type Source } from './lib/api'
+import { ApiError, getHealth, getSamples, infer, type Health, type Options, type Result, type Sample, type Source, type Status } from './lib/api'
 import { usePhone, useReducedMotion } from './lib/hooks'
 import { Landing } from './components/Landing'
 import { Analysis } from './components/Analysis'
@@ -29,6 +29,7 @@ export default function App() {
   const [srcName, setSrcName] = useState('')
   const [layers, setLayers] = useState<Layers>({ detections: false, masks: true, status: true, clusters: true, skipped: true, flaggedOnly: false })
   const [selected, setSelected] = useState<number | null>(null)
+  const [filter, setFilter] = useState<Status | null>(null)
   const source = useRef<Source | null>(null)
   const abort = useRef<AbortController | null>(null)
   const viewer = useRef<ViewerHandle>(null)
@@ -79,6 +80,7 @@ export default function App() {
     setScreen('landing')
     setResult(null)
     setSelected(null)
+    setFilter(null)
     setError(null)
   }
   const setOpt = (k: keyof Options, v: boolean) => {
@@ -90,6 +92,33 @@ export default function App() {
     setSelected(id)
     if (zoom && id != null) viewer.current?.zoomToCell(id)
   }
+  const pickFilter = (s: Status | null) => {
+    setFilter(s)
+    if (s === 'not_segmented') setLayers((l) => ({ ...l, skipped: true }))
+    if (s && selected != null && result?.cells.find((c) => c.id === selected)?.status !== s) setSelected(null)
+  }
+
+  // J / K step through the (filtered) cells, Esc clears the selection
+  const stepRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  stepRef.current = (e: KeyboardEvent) => {
+    if (screen !== 'viewer' || !result || e.metaKey || e.ctrlKey || e.altKey) return
+    const t = e.target as HTMLElement
+    if (t.closest('input, textarea, select, [contenteditable="true"]')) return
+    const k = e.key.toLowerCase()
+    if (k === 'escape') { if (selected != null) { setSelected(null); e.preventDefault() } return }
+    if (k !== 'j' && k !== 'k') return
+    const ids = result.cells.filter((c) => !filter || c.status === filter).map((c) => c.id)
+    if (!ids.length) return
+    const i = selected == null ? -1 : ids.indexOf(selected)
+    const next = k === 'j' ? ids[(i + 1) % ids.length] : ids[(i - 1 + ids.length) % ids.length]
+    e.preventDefault()
+    select(next, true)
+  }
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => stepRef.current(e)
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
 
   const typical = health?.typical_ms ? health.typical_ms[eff.consensus ? 'consensus' : 'no_consensus'] : null
 
@@ -129,14 +158,15 @@ export default function App() {
             {error && <p className="inline-error" role="alert">{error}</p>}
             <div className={`viewer-frame ${rerunning ? 'is-busy' : ''}`}>
               <Suspense fallback={<div className="viewer-msg" role="status">Loading viewer…</div>}>
-                <Viewer ref={viewer} result={result} layers={layers} selected={selected} onSelect={(id) => select(id)}
+                <Viewer ref={viewer} result={result} layers={layers} filter={filter} selected={selected} onSelect={(id) => select(id)}
                   reducedMotion={reduced} phone={phone} />
               </Suspense>
               {rerunning && <div className="viewer-msg" role="status">Updating…</div>}
             </div>
             <Legend layers={layers} clusters={layers.clusters && result.clusters.used} />
           </section>
-          <SidePanel result={result} selected={selected} onSelect={select} onNew={goNew} />
+          <SidePanel result={result} selected={selected} onSelect={select} onNew={goNew}
+            filter={filter} setFilter={pickFilter} phone={phone} />
         </main>
       )}
     </div>

@@ -1,6 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import OpenSeadragon from 'openseadragon'
-import type { Cell, Pt, Result } from '../lib/api'
+import type { Cell, Pt, Result, Status } from '../lib/api'
+import { STATUS_LABEL, reason } from '../lib/labels'
 
 export interface Layers {
   detections: boolean
@@ -17,8 +18,14 @@ export interface ViewerHandle {
   zoomToCell(id: number): void
 }
 
-const pathOf = (polys: Pt[][]) =>
+export const pathOf = (polys: Pt[][]) =>
   polys.map((p) => 'M' + p.map(([x, y]) => `${x},${y}`).join('L') + 'Z').join('')
+
+/** smallest box containing the image point (cells on top of each other: the inner one wins) */
+const hitTest = (cells: Cell[], x: number, y: number) =>
+  cells
+    .filter((c) => x >= c.box[0] && x <= c.box[2] && y >= c.box[1] && y <= c.box[3])
+    .sort((a, b) => (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]) - (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]))[0]
 
 /**
  * OpenSeadragon (BSD-3) zoom/pan on the FOV (display JPEG from the API) with an SVG overlay in image pixels.
@@ -29,17 +36,19 @@ const pathOf = (polys: Pt[][]) =>
 const Viewer = forwardRef<ViewerHandle, {
   result: Result
   layers: Layers
+  filter: Status | null
   selected: number | null
   onSelect: (id: number | null) => void
   reducedMotion: boolean
   phone: boolean
-}>(function Viewer({ result, layers, selected, onSelect, reducedMotion, phone }, ref) {
+}>(function Viewer({ result, layers, filter, selected, onSelect, reducedMotion, phone }, ref) {
   const host = useRef<HTMLDivElement>(null)
   const g = useRef<SVGGElement>(null)
   const viewer = useRef<OpenSeadragon.Viewer | null>(null)
   const cellsRef = useRef<Cell[]>(result.cells)
   const selectRef = useRef(onSelect)
-  cellsRef.current = result.cells
+  const [hover, setHover] = useState<{ id: number; x: number; y: number } | null>(null)
+  cellsRef.current = result.cells.filter((c) => !filter || c.status === filter)
   selectRef.current = onSelect
   const { width: W, height: H } = result.size
 
@@ -88,12 +97,32 @@ const Viewer = forwardRef<ViewerHandle, {
       const item = v.world.getItemAt(0)
       if (!item) return
       const p = item.viewerElementToImageCoordinates(e.position!)
-      const hit = cellsRef.current
-        .filter((c) => p.x >= c.box[0] && p.x <= c.box[2] && p.y >= c.box[1] && p.y <= c.box[3])
-        .sort((a, b) => (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]) - (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]))[0]
+      const hit = hitTest(cellsRef.current, p.x, p.y)
       selectRef.current(hit ? hit.id : null)
     })
+    // hover (mouse only): which cell is under the pointer, at most once per frame
+    let raf = 0
+    const el = host.current!
+    const move = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.buttons) { setHover(null); return }
+      const r = el.getBoundingClientRect()
+      const ex = e.clientX - r.left, ey = e.clientY - r.top
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const item = v.world.getItemAt(0)
+        if (!item) return
+        const p = item.viewerElementToImageCoordinates(new OpenSeadragon.Point(ex, ey))
+        const hit = hitTest(cellsRef.current, p.x, p.y)
+        setHover((h) => (hit ? { id: hit.id, x: ex, y: ey } : h === null ? h : null))
+      })
+    }
+    const leave = () => { cancelAnimationFrame(raf); setHover(null) }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerleave', leave)
     return () => {
+      cancelAnimationFrame(raf)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerleave', leave)
       v.destroy()
       viewer.current = null
     }
@@ -119,10 +148,15 @@ const Viewer = forwardRef<ViewerHandle, {
   }), [reducedMotion])
 
   const shown = useMemo(
-    () => result.cells.filter((c) => c.status !== 'not_segmented' && (!layers.flaggedOnly || c.status !== 'measurable')),
-    [result.cells, layers.flaggedOnly],
+    () => result.cells.filter((c) => c.status !== 'not_segmented' && (!filter || c.status === filter)
+      && (!layers.flaggedOnly || c.status !== 'measurable')),
+    [result.cells, layers.flaggedOnly, filter],
   )
-  const skipped = useMemo(() => result.cells.filter((c) => c.status === 'not_segmented'), [result.cells])
+  const skipped = useMemo(
+    () => result.cells.filter((c) => c.status === 'not_segmented' && (!filter || filter === 'not_segmented')),
+    [result.cells, filter],
+  )
+  const hov = hover && hover.id !== selected ? result.cells.find((c) => c.id === hover.id) : undefined
   const paths = useMemo(
     () => new Map(result.cells.map((c) => [c.id, { cell: pathOf(c.cell_polygons), nuc: pathOf(c.nucleus_polygons) }])),
     [result.cells],
@@ -175,6 +209,10 @@ const Viewer = forwardRef<ViewerHandle, {
               ))}
             </g>
           )}
+          {hov && (
+            <rect className="hov-halo" x={hov.box[0] - 4} y={hov.box[1] - 4}
+              width={hov.box[2] - hov.box[0] + 8} height={hov.box[3] - hov.box[1] + 8} rx={8} />
+          )}
           {sel && (
             <g className="lyr-sel">
               <rect className="sel-halo" x={sel.box[0] - 6} y={sel.box[1] - 6}
@@ -184,6 +222,18 @@ const Viewer = forwardRef<ViewerHandle, {
           )}
         </g>
       </svg>
+      {hover && (() => {
+        const c = result.cells.find((x) => x.id === hover.id)
+        if (!c) return null
+        const why = c.reasons.length ? reason(c.reasons[0]) : c.nc_ratio != null ? `N:C ${c.nc_ratio.toFixed(3)}` : ''
+        return (
+          <div className="tip" aria-hidden="true"
+            style={{ transform: `translate(${hover.x + 14}px, ${hover.y + 14}px)` }}>
+            <span className="tip__top"><strong>Cell {c.id}</strong><span className={`tip__st tip__st--${c.status}`}>{STATUS_LABEL[c.status]}</span></span>
+            {why && <span className="tip__why">{why}</span>}
+          </div>
+        )
+      })()}
     </div>
   )
 })

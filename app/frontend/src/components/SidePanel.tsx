@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Cell, Result, Status } from '../lib/api'
+import { pathOf } from './Viewer'
 import { C_NOTE, DET_LABEL, STATUS_HINT, STATUS_LABEL, fmtMs, reason, voterNames } from '../lib/labels'
 
 type Key = 'id' | 'status' | 'conf' | 'votes' | 'cell_area_px' | 'nc_ratio'
@@ -53,21 +54,44 @@ function Funnel({ result }: { result: Result }) {
   )
 }
 
-export function SidePanel({ result, selected, onSelect, onNew }: {
+/** The selected cell, cropped from the display image, with its outline. */
+function CellCrop({ result, cell }: { result: Result; cell: Cell }) {
+  const [x1, y1, x2, y2] = cell.box
+  const pad = Math.max(x2 - x1, y2 - y1) * 0.25
+  const s = Math.max(x2 - x1, y2 - y1) + 2 * pad
+  const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2
+  return (
+    <svg className={`crop st-${cell.status}`} viewBox={`${cx - s / 2} ${cy - s / 2} ${s} ${s}`} role="img"
+      aria-label={`Close-up of cell ${cell.id}`}>
+      <image href={result.downloads['image.jpg']} width={result.size.width} height={result.size.height} />
+      {cell.cell_polygons.length > 0
+        ? <>
+          <path className="crop__nuc" d={pathOf(cell.nucleus_polygons)} />
+          <path className="crop__cell" d={pathOf(cell.cell_polygons)} />
+        </>
+        : <rect className="crop__box" x={x1} y={y1} width={x2 - x1} height={y2 - y1} rx={4} />}
+    </svg>
+  )
+}
+
+export function SidePanel({ result, selected, onSelect, onNew, filter, setFilter, phone }: {
   result: Result
+  filter: Status | null
+  setFilter: (s: Status | null) => void
+  phone: boolean
   selected: number | null
   onSelect: (id: number, zoom: boolean) => void
   onNew: () => void
 }) {
   const [sort, setSort] = useState<{ key: Key; dir: 1 | -1 }>({ key: 'id', dir: 1 })
   const rows = useMemo(() => {
-    const r = [...result.cells]
+    const r = result.cells.filter((c) => !filter || c.status === filter)
     r.sort((a, b) => {
       const x = sortVal(a, sort.key), y = sortVal(b, sort.key)
       return (x < y ? -1 : x > y ? 1 : a.id - b.id) * sort.dir
     })
     return r
-  }, [result.cells, sort])
+  }, [result.cells, sort, filter])
   const body = useRef<HTMLTableSectionElement>(null)
   useEffect(() => {
     // keep the selected row visible by scrolling the table only (scrollIntoView would also scroll the page)
@@ -100,12 +124,50 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
 
       <ul className="stats" aria-label="Cells by status">
         {(['measurable', 'review', 'excluded', 'not_segmented'] as Status[]).map((s) => (
-          <li key={s} className={`stat stat--${s}`} title={STATUS_HINT[s]}>
-            <span className="stat__n">{st[s] ?? 0}</span>
-            <span className="stat__label"><span className="dot" aria-hidden="true" />{STATUS_LABEL[s]}</span>
+          <li key={s}>
+            <button type="button" className={`stat stat--${s} ${filter && filter !== s ? 'is-dim' : ''}`}
+              title={`${STATUS_HINT[s]}. Click to show only these.`} aria-pressed={filter === s}
+              disabled={!st[s]} onClick={() => setFilter(filter === s ? null : s)}>
+              <span className="stat__n">{st[s] ?? 0}</span>
+              <span className="stat__label"><span className="dot" aria-hidden="true" />{STATUS_LABEL[s]}</span>
+            </button>
           </li>
         ))}
       </ul>
+
+      {filter && (
+        <p className="filterbar" role="status">
+          <span>Showing only <strong>{STATUS_LABEL[filter].toLowerCase()}</strong> cells ({st[filter] ?? 0})</span>
+          <button type="button" className="btn btn--quiet btn--sm" onClick={() => setFilter(null)}>Show all</button>
+        </p>
+      )}
+
+      {sel && (
+        <section className="group selcell" aria-live="polite" aria-label={`Cell ${sel.id}`}>
+          <div className="selcell__top">
+            <h3 className="group__h">Cell {sel.id}</h3>
+            <StatusChip s={sel.status} />
+          </div>
+          <CellCrop result={result} cell={sel} />
+          {sel.reasons.length > 0 && <p className="selcell__why">{sel.reasons.map(reason).join(' · ')}</p>}
+          <dl className="kv kv--grid">
+            <div><dt>Confidence</dt><dd>{sel.conf.toFixed(3)}</dd></div>
+            <div><dt>Votes</dt><dd>{sel.votes} of {result.voting.detectors_run}</dd></div>
+            <div className="kv__wide"><dt>Found by</dt><dd>{voterNames(sel.voters)}</dd></div>
+            <div className="kv__wide"><dt>Detection</dt><dd>{DET_LABEL[sel.det_tag]}</dd></div>
+            {sel.status !== 'not_segmented' && <>
+              <div><dt>Cell area</dt><dd>{sel.cell_area_px.toLocaleString()} px</dd></div>
+              <div><dt>Nucleus</dt><dd>{sel.nucleus_area_px.toLocaleString()} px</dd></div>
+              <div><dt>N:C</dt><dd>{sel.nc_ratio == null ? '—' : sel.nc_ratio.toFixed(3)}</dd></div>
+              <div><dt>Occluded</dt><dd>{Math.round(sel.occluded_frac * 100)}%</dd></div>
+            </>}
+            {cl.used && !result.voting.used && (sel.near_cluster.length > 0 || sel.near_debris.length > 0) && (
+              <div className="kv__wide"><dt>Detector C (info)</dt>
+                <dd>{[sel.near_cluster.length ? 'near a cluster' : '', sel.near_debris.length ? 'near debris' : ''].filter(Boolean).join(', ')}</dd></div>
+            )}
+          </dl>
+        </section>
+      )}
 
       {result.voting.used && result.voting.mode === 'cascade' && <Funnel result={result} />}
 
@@ -142,34 +204,8 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
         </section>
       )}
 
-      {sel && (
-        <section className="group selcell" aria-live="polite" aria-label={`Cell ${sel.id}`}>
-          <div className="selcell__top">
-            <h3 className="group__h">Cell {sel.id}</h3>
-            <StatusChip s={sel.status} />
-          </div>
-          {sel.reasons.length > 0 && <p className="selcell__why">{sel.reasons.map(reason).join(' · ')}</p>}
-          <dl className="kv kv--grid">
-            <div><dt>Confidence</dt><dd>{sel.conf.toFixed(3)}</dd></div>
-            <div><dt>Votes</dt><dd>{sel.votes} of {result.voting.detectors_run}</dd></div>
-            <div className="kv__wide"><dt>Found by</dt><dd>{voterNames(sel.voters)}</dd></div>
-            <div className="kv__wide"><dt>Detection</dt><dd>{DET_LABEL[sel.det_tag]}</dd></div>
-            {sel.status !== 'not_segmented' && <>
-              <div><dt>Cell area</dt><dd>{sel.cell_area_px.toLocaleString()} px</dd></div>
-              <div><dt>Nucleus</dt><dd>{sel.nucleus_area_px.toLocaleString()} px</dd></div>
-              <div><dt>N:C</dt><dd>{sel.nc_ratio == null ? '—' : sel.nc_ratio.toFixed(3)}</dd></div>
-              <div><dt>Occluded</dt><dd>{Math.round(sel.occluded_frac * 100)}%</dd></div>
-            </>}
-            {cl.used && !result.voting.used && (sel.near_cluster.length > 0 || sel.near_debris.length > 0) && (
-              <div className="kv__wide"><dt>Detector C (info)</dt>
-                <dd>{[sel.near_cluster.length ? 'near a cluster' : '', sel.near_debris.length ? 'near debris' : ''].filter(Boolean).join(', ')}</dd></div>
-            )}
-          </dl>
-        </section>
-      )}
-
       <section className="group cells" aria-labelledby="cells-h">
-        <h3 id="cells-h" className="group__h">Cells <span className="muted">· select a row to zoom</span></h3>
+        <h3 id="cells-h" className="group__h">Cells <span className="muted">· {phone ? 'tap a row to zoom' : <>select a row to zoom · <kbd>J</kbd> <kbd>K</kbd> to step</>}</span></h3>
         <div className="tablewrap" tabIndex={-1}>
           <table className="table">
             <thead>
