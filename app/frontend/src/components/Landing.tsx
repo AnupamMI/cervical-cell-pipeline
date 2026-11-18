@@ -129,7 +129,10 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
       </div>
 
       <section className="samples" aria-labelledby="samples-h">
-        <h2 id="samples-h" className="section-h">Or try a sample</h2>
+        <div className="samples__head">
+          <h2 id="samples-h" className="section-h">Or try a sample</h2>
+          <p className="landing__foot muted small">Research demo, not for diagnosis. Images are deleted after decoding; results after 15 minutes.</p>
+        </div>
         {samplesError && <p className="muted">Samples could not be loaded.</p>}
         <div className="samples__row">
           {samples === null && !samplesError &&
@@ -144,7 +147,6 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
         </div>
       </section>
 
-      <p className="landing__foot muted small">Research demo, not for diagnosis. Images are deleted after decoding; results after 15 minutes.</p>
     </main>
   )
 }

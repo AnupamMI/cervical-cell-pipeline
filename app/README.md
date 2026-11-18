@@ -164,6 +164,10 @@ together with their dependencies (`three`, `@react-three/*`, `@shadergradient/re
   Confirm · Detector C, Confirm · YOLO26l, Segment · TinyUNet, Sort · Quality gate; a step that is switched off is
   struck through) next to the upload card (drop zone + three switches: Segment confirmed cells only, Detector C,
   YOLO26l). Five sample thumbnails below. Phones: one column, steps hidden so the upload card stays near the top.
+- **Landscape desktops:** the landing fills exactly one screen (checked 1280x720 to 2560x1440, no scrolling).
+  Type scales with the window, `min(1vw, 1.8vh)`, clamped so nothing is smaller than before (hints 13 px at
+  1280x720, 15 px at 1920x1080; title 43 to 64 px). Sample thumbnails take the leftover height (13vh). On screens
+  up to 940 px tall each pipeline step's description sits on the same line as its name.
 - **Bubble glass (landing only):** on mouse / trackpad devices the "Choose image" button and the three switches
   switch to the ReactDrops "Bubble UI" soap-bubble material (`src/components/soap-bubble/`, Light glass preset,
   card as backdrop; button tinted with the accent so white text stays above 4.5:1). The module (93 KB, 32 KB gzip,
