@@ -2,21 +2,22 @@ import type { Options } from '../lib/api'
 import type { Layers } from './Viewer'
 import { Switch } from './Switch'
 
-const LAYERS: { key: keyof Layers; label: string }[] = [
-  { key: 'detections', label: 'Detections' },
-  { key: 'masks', label: 'Masks' },
-  { key: 'status', label: 'Status' },
-  { key: 'clusters', label: 'Clusters & debris' },
-  { key: 'flaggedOnly', label: 'Flagged only' },
+const LAYERS: { key: keyof Layers; label: string; title: string }[] = [
+  { key: 'masks', label: 'Outlines', title: 'Cell and nucleus outlines of segmented cells' },
+  { key: 'detections', label: 'Boxes', title: 'Detector boxes of segmented cells' },
+  { key: 'skipped', label: 'Skipped', title: 'Boxes of cells that were not segmented' },
+  { key: 'clusters', label: 'Clusters & debris', title: 'Detector C clusters and debris' },
+  { key: 'flaggedOnly', label: 'Flagged only', title: 'Hide measurable cells' },
 ]
 
-export function Toolbar({ layers, setLayers, opts, avail, setOpt, clustersShown, busy, onZoom, onHome }: {
+export function Toolbar({ layers, setLayers, opts, avail, setOpt, clustersShown, nSkipped, busy, onZoom, onHome }: {
   layers: Layers
   setLayers: (l: Layers) => void
   opts: Options
   avail: Options
   setOpt: (k: keyof Options, v: boolean) => void
   clustersShown: boolean
+  nSkipped: number
   busy: boolean
   onZoom: (f: number) => void
   onHome: () => void
@@ -25,21 +26,21 @@ export function Toolbar({ layers, setLayers, opts, avail, setOpt, clustersShown,
     <div className="toolbar">
       <div className="segmented" role="group" aria-label="Layers">
         {LAYERS.map((t) => {
-          const off = t.key === 'clusters' && !clustersShown
+          const off = (t.key === 'clusters' && !clustersShown) || (t.key === 'skipped' && nSkipped === 0)
           return (
             <button key={t.key} type="button" className="segmented__btn" aria-pressed={layers[t.key] && !off}
-              disabled={off} title={off ? 'Turn on “Clusters” to run detector C' : undefined}
+              disabled={off} title={off ? (t.key === 'skipped' ? 'Every cell was segmented' : 'Turn on “Detector C” to see clusters') : t.title}
               onClick={() => setLayers({ ...layers, [t.key]: !layers[t.key] })}>
-              {t.label}
+              {t.label}{t.key === 'skipped' && nSkipped > 0 ? <span className="segmented__n">{nSkipped}</span> : null}
             </button>
           )
         })}
       </div>
       <div className="toolbar__right">
         <Switch compact checked={opts.consensus && avail.consensus} disabled={!avail.consensus || busy}
-          onChange={(v) => setOpt('consensus', v)} label="Consensus" />
+          onChange={(v) => setOpt('consensus', v)} label="YOLO26l" />
         <Switch compact checked={opts.clusters && avail.clusters} disabled={!avail.clusters || busy}
-          onChange={(v) => setOpt('clusters', v)} label="Clusters" />
+          onChange={(v) => setOpt('clusters', v)} label="Detector C" />
         <Switch compact checked={opts.vote} disabled={busy} onChange={(v) => setOpt('vote', v)} label="Confirm" />
         <div className="zoom" role="group" aria-label="Zoom">
           <button type="button" className="iconbtn" onClick={() => onZoom(1 / 1.4)} aria-label="Zoom out">

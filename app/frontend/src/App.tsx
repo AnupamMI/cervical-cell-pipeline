@@ -27,7 +27,7 @@ export default function App() {
   const [busyRetry, setBusyRetry] = useState<Source | null>(null)
   const [rerunning, setRerunning] = useState(false)
   const [srcName, setSrcName] = useState('')
-  const [layers, setLayers] = useState<Layers>({ detections: true, masks: true, status: true, clusters: true, flaggedOnly: false })
+  const [layers, setLayers] = useState<Layers>({ detections: false, masks: true, status: true, clusters: true, skipped: true, flaggedOnly: false })
   const [selected, setSelected] = useState<number | null>(null)
   const source = useRef<Source | null>(null)
   const abort = useRef<AbortController | null>(null)
@@ -124,6 +124,7 @@ export default function App() {
           <section className="stage card" aria-label="Image">
             <Toolbar layers={layers} setLayers={setLayers} opts={opts} avail={avail} setOpt={setOpt}
               clustersShown={result.clusters.used} busy={rerunning}
+              nSkipped={result.counts.status.not_segmented ?? 0}
               onZoom={(f) => viewer.current?.zoomBy(f)} onHome={() => viewer.current?.home()} />
             {error && <p className="inline-error" role="alert">{error}</p>}
             <div className={`viewer-frame ${rerunning ? 'is-busy' : ''}`}>
@@ -133,7 +134,7 @@ export default function App() {
               </Suspense>
               {rerunning && <div className="viewer-msg" role="status">Updating…</div>}
             </div>
-            <Legend clusters={layers.clusters && result.clusters.used} />
+            <Legend layers={layers} clusters={layers.clusters && result.clusters.used} />
           </section>
           <SidePanel result={result} selected={selected} onSelect={select} onNew={goNew} />
         </main>
@@ -142,14 +143,14 @@ export default function App() {
   )
 }
 
-function Legend({ clusters }: { clusters: boolean }) {
+function Legend({ layers, clusters }: { layers: Layers; clusters: boolean }) {
   return (
     <ul className="legend" aria-label="Legend">
-      <li className="lg lg--measurable">Measurable</li>
+      {!layers.flaggedOnly && <li className="lg lg--measurable">Measurable</li>}
       <li className="lg lg--review">Review</li>
       <li className="lg lg--excluded">Excluded</li>
-      <li className="lg lg--dashed">Not confirmed by YOLO26l</li>
-      <li className="lg lg--not_segmented">Not segmented</li>
+      {layers.detections && <li className="lg lg--dashed">Not confirmed by YOLO26l</li>}
+      {layers.skipped && <li className="lg lg--not_segmented">Not segmented</li>}
       {clusters && <li className="lg lg--cluster">Cluster</li>}
       {clusters && <li className="lg lg--debris">Debris</li>}
     </ul>

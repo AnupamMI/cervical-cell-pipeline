@@ -160,19 +160,22 @@ switches, selection and focus, system font stack (`-apple-system, "SF Pro", "Int
 together with their dependencies (`three`, `@react-three/*`, `@shadergradient/react`, `camera-controls`,
 `three-stdlib`); the only runtime dependencies are React and OpenSeadragon.
 
-- **Landing:** headline, one-line explanation, "Research demo, not for diagnosis." in small muted text, a drop zone,
-  the two switches (Consensus check, Clusters & debris (detector C), both on by default), five sample thumbnails.
+- **Landing:** two columns on desktop: headline, one-line explanation and the five pipeline steps (Find · YOLO26s,
+  Confirm · Detector C, Confirm · YOLO26l, Segment · TinyUNet, Sort · Quality gate; a step that is switched off is
+  struck through) next to the upload card (drop zone + three switches: Segment confirmed cells only, Detector C,
+  YOLO26l). Five sample thumbnails below. Phones: one column, steps hidden so the upload card stays near the top.
   The header + intro are static HTML in `index.html` (same markup React renders), so the first paint needs no JS.
-- **Analysis:** progress bar + the stage names (Detect, Consensus, Clusters & debris, Confirm, Segment, Quality gate; stages
-  that are off are hidden). The call is synchronous, so the current stage is an estimate from the warm-up timings.
-- **Viewer:** the image fills its card edge to edge (4:3 on phones). A slim segmented control toggles layers
-  (Detections · Masks · Status · Clusters & debris · Flagged only); Consensus, Clusters and Confirm are switches (they
-  re-run the image). Not-segmented boxes are thin dotted grey; zoom − / + / fit. Detector-C boxes are dotted, muted slate-blue (cluster) / umber (debris) outlines
-  with a light tint and a label ("Cluster 0.89") that keeps its on-screen size at any zoom.
-- **Side panel:** status counts (Measurable / Review / Excluded / Not segmented), a Votes column (e.g. 2/3) in the
-  table and "Found by" in the cell details, Clusters & debris counts (+ cells near each) with the note "Experimental: shown for
-  information, doesn't change cell status.", image-check warnings, top reasons, selected-cell details, the sortable
-  cell table (select a row to zoom), downloads as quiet secondary buttons, stage timings.
+- **Analysis:** progress bar + the stage names (Detect, Consensus, Clusters & debris, Confirm, Segment, Quality gate;
+  stages that are off are hidden). The call is synchronous, so the current stage is an estimate from the warm-up timings.
+- **Viewer:** the image fills its card edge to edge (4:3 on phones). Layers: Outlines (on; cell outlines with a light
+  status tint + nucleus fill) · Boxes (off; detector boxes of segmented cells) · Skipped (on, with a count; thin
+  dashed white boxes of not-segmented cells) · Clusters & debris (on; dotted slate-blue / umber boxes, labels such as
+  "Cluster 0.89" appear once zoomed in) · Flagged only. YOLO26l, Detector C and Confirm are switches (they re-run the
+  image); zoom − / + / fit. The legend lists only what is shown.
+- **Side panel:** status tiles (Measurable / Review / Excluded / Not segmented), "How cells were filtered" (a bar per
+  cascade step: YOLO26s found → Detector C confirmed → YOLO26l confirmed → Segmented → Measurable), clusters & debris
+  counts, image-check warnings, top reasons, selected-cell details (votes, found by, areas, N:C), the sortable cell
+  table with a Votes column (select a row to zoom), downloads as quiet secondary buttons, stage timings.
 - **Status colours** stay distinct from the accent and from detector C: text green `#1B7A36` / orange `#A34A00` /
   red `#C0261C` on light tints (all >= 5:1); on the image, brighter strokes `#2FBF4F` / `#FF9500` / `#FF3B30`. Every
   status also has a text label.

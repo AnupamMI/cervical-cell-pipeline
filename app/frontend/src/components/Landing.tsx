@@ -2,6 +2,14 @@ import { useRef, useState } from 'react'
 import { ACCEPT, checkFile, type Options, type Sample } from '../lib/api'
 import { Switch } from './Switch'
 
+const STEPS: { n: string; t: string; d: string; opt?: keyof Options }[] = [
+  { n: 'YOLO26s', t: 'Find', d: 'Proposes every cell' },
+  { n: 'Detector C', t: 'Confirm', d: 'Agrees it is a cell; marks clusters and debris', opt: 'clusters' },
+  { n: 'YOLO26l', t: 'Confirm', d: 'Agrees too, at higher resolution', opt: 'consensus' },
+  { n: 'TinyUNet', t: 'Segment', d: 'Outlines cell and nucleus' },
+  { n: 'Quality gate', t: 'Sort', d: 'Measurable, review or excluded' },
+]
+
 export function Landing({ samples, samplesError, onFile, onSample, opts, avail, setOpt, error, busyRetry }: {
   samples: Sample[] | null
   samplesError: boolean
@@ -24,50 +32,65 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
     if (!e) onFile(f)
   }
   const msg = local ?? error
+  const on = (k?: keyof Options) => !k || (opts[k] && avail[k])
 
   return (
     <main id="main" className="landing">
-      <div className="landing__intro">
-        <h1 className="landing__title">Cervical Cell Pipeline</h1>
-        <p className="landing__lede">
-          Upload one Pap-smear field of view to detect every cell, outline it and its nucleus, and see which
-          masks are measurable.
-        </p>
-        <p className="landing__note">Research demo, not for diagnosis.</p>
-      </div>
-
-      <section className="card upload" aria-labelledby="upload-h">
-        <div className={`drop ${drag ? 'is-drag' : ''}`}
-          onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
-          onDragLeave={() => setDrag(false)}
-          onDrop={(e) => { e.preventDefault(); setDrag(false); take(e.dataTransfer.files[0]) }}>
-          <svg className="drop__icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
-          </svg>
-          <h2 id="upload-h" className="drop__h">Drop an image here</h2>
-          <p className="drop__meta">TIFF, PNG or JPEG · 2028 × 1520 · up to 25 MB</p>
-          <button type="button" className="btn btn--primary" onClick={() => input.current?.click()}>Choose image</button>
-          <input ref={input} type="file" accept={ACCEPT} hidden aria-hidden="true" tabIndex={-1}
-            onChange={(e) => { take(e.target.files?.[0]); e.target.value = '' }} />
-        </div>
-        <div className="upload__opts">
-          <Switch checked={opts.consensus && avail.consensus} disabled={!avail.consensus}
-            onChange={(v) => setOpt('consensus', v)} label="Consensus check"
-            hint={avail.consensus ? 'YOLO26l confirms each cell. Never removes cells.' : 'Not available on this deployment.'} />
-          <Switch checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
-            onChange={(v) => setOpt('clusters', v)} label="Clusters & debris (detector C)"
-            hint={avail.clusters ? 'Outlines clusters and debris (never segmented). Its cell class is the first check.' : 'Not available on this deployment.'} />
-          <Switch checked={opts.vote} onChange={(v) => setOpt('vote', v)} label="Segment confirmed cells only"
-            hint="YOLO26s finds cells; detector C, then YOLO26l, must confirm each one. Cells in clusters or debris are skipped. Others are shown, not segmented." />
-        </div>
-        {msg && <p className="error" role="alert">{msg}</p>}
-        {busyRetry && (
-          <p className="error error--busy" role="status">
-            <span>Another image is being analysed.</span>
-            <button type="button" className="btn btn--quiet btn--sm" onClick={busyRetry}>Retry</button>
+      <div className="hero">
+        <div className="landing__intro">
+          <p className="eyebrow eyebrow--accent">Pap-smear field of view analysis</p>
+          <h1 className="landing__title">Find, confirm and outline every cell.</h1>
+          <p className="landing__lede">
+            Three detectors must agree before a cell is segmented. Clusters and debris are marked, never measured.
           </p>
-        )}
-      </section>
+          <ol className="flow" aria-label="Pipeline">
+            {STEPS.map((s, i) => (
+              <li key={s.n} className={`flow__step ${on(s.opt) ? '' : 'is-off'}`}>
+                <span className="flow__n" aria-hidden="true">{i + 1}</span>
+                <span className="flow__body">
+                  <span className="flow__t">{s.t} <span className="flow__model">· {s.n}</span></span>
+                  <span className="flow__d">{s.d}{on(s.opt) ? '' : ' (off)'}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <section className="card upload" aria-labelledby="upload-h">
+          <div className={`drop ${drag ? 'is-drag' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => { e.preventDefault(); setDrag(false); take(e.dataTransfer.files[0]) }}>
+            <span className="drop__badge" aria-hidden="true">
+              <svg className="drop__icon" viewBox="0 0 24 24">
+                <path d="M12 15V4m0 0L8 8m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+              </svg>
+            </span>
+            <h2 id="upload-h" className="drop__h">Drop an image here</h2>
+            <p className="drop__meta">TIFF, PNG or JPEG · 2028 × 1520 · up to 25 MB</p>
+            <button type="button" className="btn btn--primary" onClick={() => input.current?.click()}>Choose image</button>
+            <input ref={input} type="file" accept={ACCEPT} hidden aria-hidden="true" tabIndex={-1}
+              onChange={(e) => { take(e.target.files?.[0]); e.target.value = '' }} />
+          </div>
+          <div className="upload__opts" role="group" aria-label="Pipeline settings">
+            <Switch checked={opts.vote} onChange={(v) => setOpt('vote', v)} label="Segment confirmed cells only"
+              hint="Off: every YOLO26s cell is segmented." />
+            <Switch checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
+              onChange={(v) => setOpt('clusters', v)} label="Detector C"
+              hint={avail.clusters ? 'Cell check, clusters and debris.' : 'Not available here.'} />
+            <Switch checked={opts.consensus && avail.consensus} disabled={!avail.consensus}
+              onChange={(v) => setOpt('consensus', v)} label="YOLO26l"
+              hint={avail.consensus ? 'Second cell check.' : 'Not available here.'} />
+          </div>
+          {msg && <p className="error" role="alert">{msg}</p>}
+          {busyRetry && (
+            <p className="error error--busy" role="status">
+              <span>Another image is being analysed.</span>
+              <button type="button" className="btn btn--quiet btn--sm" onClick={busyRetry}>Retry</button>
+            </p>
+          )}
+        </section>
+      </div>
 
       <section className="samples" aria-labelledby="samples-h">
         <h2 id="samples-h" className="section-h">Or try a sample</h2>
@@ -85,7 +108,7 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
         </div>
       </section>
 
-      <p className="landing__foot muted small">Images are deleted after decoding; results after 15 minutes.</p>
+      <p className="landing__foot muted small">Research demo, not for diagnosis. Images are deleted after decoding; results after 15 minutes.</p>
     </main>
   )
 }

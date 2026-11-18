@@ -27,6 +27,32 @@ function sortVal(c: Cell, k: Key) {
   return c[k] as number | string
 }
 
+/** How many cells survive each step of the confirmation cascade. */
+function Funnel({ result }: { result: Result }) {
+  const cells = result.cells
+  const has = (v: string) => cells.filter((c) => [...v].every((x) => c.voters.includes(x))).length
+  const seg = cells.filter((c) => c.status !== 'not_segmented').length
+  const steps: [string, number][] = [['YOLO26s found', has('A')]]
+  if (result.clusters.used) steps.push(['Detector C confirmed', has('AC')])
+  if (result.consensus.used) steps.push(['YOLO26l confirmed', has(result.clusters.used ? 'ACB' : 'AB')])
+  steps.push(['Segmented', seg], ['Measurable', result.counts.status.measurable ?? 0])
+  const max = Math.max(1, steps[0][1])
+  return (
+    <section className="group" aria-labelledby="funnel-h">
+      <h3 id="funnel-h" className="group__h">How cells were filtered</h3>
+      <ol className="funnel">
+        {steps.map(([label, n], i) => (
+          <li key={label} className={`funnel__row ${i === steps.length - 1 ? 'is-last' : ''}`}>
+            <span className="funnel__label">{label}</span>
+            <span className="funnel__bar" aria-hidden="true"><span style={{ width: `${(100 * n) / max}%` }} /></span>
+            <span className="funnel__n">{n}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
 export function SidePanel({ result, selected, onSelect, onNew }: {
   result: Result
   selected: number | null
@@ -81,6 +107,8 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
         ))}
       </ul>
 
+      {result.voting.used && result.voting.mode === 'cascade' && <Funnel result={result} />}
+
       {qcIssues.length > 0 && (
         <div className="notice" role="note">
           <strong>Image check</strong>
@@ -94,8 +122,10 @@ export function SidePanel({ result, selected, onSelect, onNew }: {
           <dl className="kv">
             <div><dt><span className="sw sw--cluster" aria-hidden="true" />Clusters</dt><dd>{result.counts.clusters.cluster}</dd></div>
             <div><dt><span className="sw sw--debris" aria-hidden="true" />Debris</dt><dd>{result.counts.clusters.debris}</dd></div>
-            <div><dt>Cells near a cluster</dt><dd>{result.counts.near.cluster}</dd></div>
-            <div><dt>Cells near debris</dt><dd>{result.counts.near.debris}</dd></div>
+            {!result.voting.used && <>
+              <div><dt>Cells near a cluster</dt><dd>{result.counts.near.cluster}</dd></div>
+              <div><dt>Cells near debris</dt><dd>{result.counts.near.debris}</dd></div>
+            </>}
           </dl>
           <p className="small muted">{result.voting.used
             ? 'Clusters and debris are never segmented; cells inside them are skipped. Detector C (experimental, mAP50 ~0.5) also confirms each cell.'

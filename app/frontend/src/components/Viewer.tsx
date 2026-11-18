@@ -7,6 +7,7 @@ export interface Layers {
   masks: boolean
   status: boolean
   clusters: boolean
+  skipped: boolean
   flaggedOnly: boolean
 }
 
@@ -73,6 +74,7 @@ const Viewer = forwardRef<ViewerHandle, {
       g.current.setAttribute('transform', `translate(${p0.x} ${p0.y}) scale(${k})`)
       // labels keep a constant on-screen size: font-size in image units = px / scale
       g.current.style.setProperty('--k', String(1 / k))
+      g.current.classList.toggle('is-near', k > 0.7)   // detail labels only once zoomed in
     }
     v.addHandler('open', () => {
       sync()
@@ -117,9 +119,10 @@ const Viewer = forwardRef<ViewerHandle, {
   }), [reducedMotion])
 
   const shown = useMemo(
-    () => result.cells.filter((c) => !layers.flaggedOnly || c.status !== 'measurable'),
+    () => result.cells.filter((c) => c.status !== 'not_segmented' && (!layers.flaggedOnly || c.status !== 'measurable')),
     [result.cells, layers.flaggedOnly],
   )
+  const skipped = useMemo(() => result.cells.filter((c) => c.status === 'not_segmented'), [result.cells])
   const paths = useMemo(
     () => new Map(result.cells.map((c) => [c.id, { cell: pathOf(c.cell_polygons), nuc: pathOf(c.nucleus_polygons) }])),
     [result.cells],
@@ -139,6 +142,9 @@ const Viewer = forwardRef<ViewerHandle, {
                 <g key={c.id} className={tone(c)}>
                   {c.nucleus_polygons.length > 0 && <path className="nuc" d={paths.get(c.id)!.nuc} />}
                   {c.cell_polygons.length > 0 && <path className="cellline" d={paths.get(c.id)!.cell} />}
+                  {c.cell_polygons.length === 0 && !layers.detections && (
+                    <rect className="det" x={c.box[0]} y={c.box[1]} width={c.box[2] - c.box[0]} height={c.box[3] - c.box[1]} />
+                  )}
                 </g>
               ))}
             </g>
@@ -151,11 +157,19 @@ const Viewer = forwardRef<ViewerHandle, {
               ))}
             </g>
           )}
+          {layers.skipped && (
+            <g className="lyr-skip">
+              {skipped.map((c) => (
+                <rect key={c.id} className="det st-not_segmented"
+                  x={c.box[0]} y={c.box[1]} width={c.box[2] - c.box[0]} height={c.box[3] - c.box[1]} rx={4} />
+              ))}
+            </g>
+          )}
           {layers.clusters && result.clusters.used && (
             <g className="lyr-c">
               {result.clusters.boxes.map((b) => (
                 <g key={b.id} className={`cbox cbox--${b.class}`}>
-                  <rect x={b.box[0]} y={b.box[1]} width={b.box[2] - b.box[0]} height={b.box[3] - b.box[1]} />
+                  <rect x={b.box[0]} y={b.box[1]} width={b.box[2] - b.box[0]} height={b.box[3] - b.box[1]} rx={6} />
                   <text x={b.box[0]} y={b.box[1]} dx="0.4em" dy="1.25em">{b.class === 'cluster' ? 'Cluster' : 'Debris'} {b.conf.toFixed(2)}</text>
                 </g>
               ))}
