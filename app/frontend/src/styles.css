@@ -439,3 +439,13 @@ button.stat:disabled { cursor: default; opacity: 0.7; }
 
 kbd { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-2);
   border-bottom-width: 2px; background: #fff; font: 600 11px/16px inherit; text-align: center; color: var(--ink-2); }
+
+/* ---------------------------------------------------------------- v4 bubble glass (landing upload card only) */
+.bswitch__row { display: inline-flex; align-items: center; gap: 10px; padding: 2px 0; }
+.bswitch__row .switch__label { cursor: pointer; }
+.bswitch__toggle { flex: none; margin: -4px 0 -4px -4px; }
+.bswitch__toggle:disabled + .switch__label { cursor: not-allowed; opacity: 0.55; }
+.upload__opts .bswitch .switch__hint { padding-left: 60px; }
+.bbtn.soap-bubble-button { font: inherit; font-size: 15px; font-weight: 600; color: #fff; min-height: 44px; padding: 0 26px; }
+/* plain controls match the glass ones' size, so the swap doesn't shift the layout */
+.bbtn-plain { min-height: 44px; padding: 0 26px; border-radius: 999px; font-size: 15px; }

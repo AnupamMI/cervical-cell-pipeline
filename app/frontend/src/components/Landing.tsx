@@ -1,6 +1,24 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { ACCEPT, checkFile, type Options, type Sample } from '../lib/api'
 import { Switch } from './Switch'
+
+type Glass = typeof import('./BubbleSwitch')
+
+// Approved Light glass material (catalog defaults for light pages).
+const GLASS = {
+  glass: 0.95, iridescence: 0.5, filmScale: 4.85, oilOpacity: 1, oilCoverage: 0.73, oilEdge: 18,
+  oilEdgeFade: 2.33, clearCenter: 0.57, thickness: 480, drainage: 0.35, swirl: 0.5,
+  reflectivity: 1.3, refraction: 0.15, dispersion: 1, bevel: 14,
+  windowLength: 1.3, windowMargin: 0.85, windowBend: 0.75, windowSize: 0.75, windowWidth: 0.8,
+  windowGradient: 0.96, windowHead: 0.7, windowTail: 0.6, glintSize: 1.65, glintIntensity: 0,
+  glintDistance: -0.45, glintHeight: 0.65, windowIntensity: 0.85, windowTwin: false,
+  bottomShadeColor: '#ffffff',
+} as const
+
+// Shares the glass material and the card backdrop once the bubble module has loaded.
+function Mat({ glass, card, children }: { glass: Glass | null; card: RefObject<HTMLElement | null>; children: ReactNode }) {
+  return glass ? <glass.SoapBubbleMaterial backdrop={card} {...GLASS}>{children}</glass.SoapBubbleMaterial> : <>{children}</>
+}
 
 const STEPS: { n: string; t: string; d: string; opt?: keyof Options }[] = [
   { n: 'YOLO26s', t: 'Find', d: 'Proposes every cell' },
@@ -22,6 +40,20 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
   busyRetry: (() => void) | null
 }) {
   const input = useRef<HTMLInputElement>(null)
+  const card = useRef<HTMLElement>(null)
+  // Plain controls first; on mouse/trackpad devices the bubble-glass versions load once the page is idle.
+  const [glass, setGlass] = useState<Glass | null>(null)
+  useEffect(() => {
+    // Decorative only: skip on touch-first devices, where the setup cost is felt as lag.
+    if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return
+    let live = true
+    const load = () => import('./BubbleSwitch').then((m) => live && setGlass(m), () => {})
+    const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }
+    const id = w.requestIdleCallback ? w.requestIdleCallback(load, { timeout: 2500 }) : window.setTimeout(load, 1200)
+    return () => { live = false; if (!w.requestIdleCallback) clearTimeout(id) }
+  }, [])
+  const Sw = glass?.BubbleSwitch ?? Switch
+  const choose = () => input.current?.click()
   const [drag, setDrag] = useState(false)
   const [local, setLocal] = useState<string | null>(null)
 
@@ -56,7 +88,8 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
           </ol>
         </div>
 
-        <section className="card upload" aria-labelledby="upload-h">
+        <section ref={card} className="card upload" aria-labelledby="upload-h">
+          <Mat glass={glass} card={card}>
           <div className={`drop ${drag ? 'is-drag' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
             onDragLeave={() => setDrag(false)}
@@ -68,20 +101,23 @@ export function Landing({ samples, samplesError, onFile, onSample, opts, avail, 
             </span>
             <h2 id="upload-h" className="drop__h">Drop an image here</h2>
             <p className="drop__meta">TIFF, PNG or JPEG · 2028 × 1520 · up to 25 MB</p>
-            <button type="button" className="btn btn--primary" onClick={() => input.current?.click()}>Choose image</button>
+            {glass
+              ? <glass.SoapBubbleButton className="bbtn" tint="#3d35a8" opacity={0.92} onClick={choose}>Choose image</glass.SoapBubbleButton>
+              : <button type="button" className="btn btn--primary bbtn-plain" onClick={choose}>Choose image</button>}
             <input ref={input} type="file" accept={ACCEPT} hidden aria-hidden="true" tabIndex={-1}
               onChange={(e) => { take(e.target.files?.[0]); e.target.value = '' }} />
           </div>
           <div className="upload__opts" role="group" aria-label="Pipeline settings">
-            <Switch checked={opts.vote} onChange={(v) => setOpt('vote', v)} label="Segment confirmed cells only"
+            <Sw checked={opts.vote} onChange={(v) => setOpt('vote', v)} label="Segment confirmed cells only"
               hint="Off: every YOLO26s cell is segmented." />
-            <Switch checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
+            <Sw checked={opts.clusters && avail.clusters} disabled={!avail.clusters}
               onChange={(v) => setOpt('clusters', v)} label="Detector C"
               hint={avail.clusters ? 'Cell check, clusters and debris.' : 'Not available here.'} />
-            <Switch checked={opts.consensus && avail.consensus} disabled={!avail.consensus}
+            <Sw checked={opts.consensus && avail.consensus} disabled={!avail.consensus}
               onChange={(v) => setOpt('consensus', v)} label="YOLO26l"
               hint={avail.consensus ? 'Second cell check.' : 'Not available here.'} />
           </div>
+          </Mat>
           {msg && <p className="error" role="alert">{msg}</p>}
           {busyRetry && (
             <p className="error error--busy" role="status">

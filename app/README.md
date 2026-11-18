@@ -164,6 +164,13 @@ together with their dependencies (`three`, `@react-three/*`, `@shadergradient/re
   Confirm · Detector C, Confirm · YOLO26l, Segment · TinyUNet, Sort · Quality gate; a step that is switched off is
   struck through) next to the upload card (drop zone + three switches: Segment confirmed cells only, Detector C,
   YOLO26l). Five sample thumbnails below. Phones: one column, steps hidden so the upload card stays near the top.
+- **Bubble glass (landing only):** on mouse / trackpad devices the "Choose image" button and the three switches
+  switch to the ReactDrops "Bubble UI" soap-bubble material (`src/components/soap-bubble/`, Light glass preset,
+  card as backdrop; button tinted with the accent so white text stays above 4.5:1). The module (93 KB, 32 KB gzip,
+  plus `html-to-image`) loads after the page is idle, so first paint shows the plain controls at the same size.
+  Touch devices keep the plain controls: on a throttled phone CPU the WebGL and backdrop setup was a ~1 s long
+  task (Lighthouse mobile 73). The viewer and side panel stay flat so colours on the image are never tinted.
+  License: ReactDrops Component License 1.0 (notice kept in each file).
   The header + intro are static HTML in `index.html` (same markup React renders), so the first paint needs no JS.
 - **Analysis:** progress bar + the stage names (Detect, Consensus, Clusters & debris, Confirm, Segment, Quality gate;
   stages that are off are hidden). The call is synchronous, so the current stage is an estimate from the warm-up timings.
@@ -198,6 +205,8 @@ phone image, duplicated "not for diagnosis" note on the landing, clipped table c
   desktop **100 / 100 / 100** (FCP 1.5 s / LCP 1.8 s / TBT 10 ms / CLS 0 on the mobile profile). Getting there
   needed gzip on the FastAPI app (the 244 KB JS bundle was served uncompressed: mobile 92 before) and the static
   first paint.
+  With bubble glass (Nov 2026): mobile **94-95** (bubbles not loaded on touch), desktop **86-94** depending on the
+  run (one ~0.25 s task when the shaders compile after first paint); accessibility and best practices 100.
 - **Contrast:** computed for every visible text element against its composited background on landing, analysis and
   viewer (340 elements): all >= 4.5:1.
 
